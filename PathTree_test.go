@@ -1,3 +1,7 @@
+// Copyright 2020 GOM. All rights reserved.
+// Since 27/02/2020 By GOM
+// Licensed under MIT License
+
 package we
 
 import (
@@ -12,7 +16,7 @@ func TestAddRoutes(t *testing.T) {
 	// let's list the routes and ensure that is empty
 	t.Run("Test PathTree Initialization", func(t *testing.T) {
 		if routes := pathTree.ListRoutes(); len(routes) > 0 {
-			t.Error("PathTree is initialized as non-empty",routes)
+			t.Error("PathTree is initialized as non-empty", routes)
 		}
 	})
 
@@ -33,10 +37,10 @@ func TestAddRoutes(t *testing.T) {
 				t.Error("Unexpected null handler for root")
 			} else {
 				if registeredHandler != interface{}(handler) {
-				    t.Error("Unexpected registered handler for root", registeredHandler)
-			    } else if len(variables) > 0 {
-				    t.Error("Unexpected Path Variables found in endpoint", variables)
-			    }
+					t.Error("Unexpected registered handler for root", registeredHandler)
+				} else if len(variables) > 0 {
+					t.Error("Unexpected Path Variables found in endpoint", variables)
+				}
 			}
 		}
 
@@ -51,7 +55,7 @@ func TestAddRoutes(t *testing.T) {
 		if success, _ := pathTree.addHandler("/", handler); success {
 			t.Error("Was able to  overload root handler")
 		}
-		registeredHandler,variables := pathTree.getHandlerAndPathVariables("/")
+		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/")
 		if registeredHandler == nil {
 			t.Error("Unexpected null handler for root")
 		} else {
@@ -64,7 +68,7 @@ func TestAddRoutes(t *testing.T) {
 	})
 
 	t.Run("Test adding a static handler", func(t *testing.T) {
-		handler := func(w http.ResponseWriter, context *RequestContext){}
+		handler := func(w http.ResponseWriter, context *RequestContext) {}
 
 		if success, e := pathTree.addHandler("/something/somethingelse", &handler); !success {
 			t.Error("Not able to add Handler", e.Error())
@@ -84,7 +88,7 @@ func TestAddRoutes(t *testing.T) {
 	})
 
 	t.Run("Test adding a variable handler", func(t *testing.T) {
-		handler := func(w http.ResponseWriter, context *RequestContext){}
+		handler := func(w http.ResponseWriter, context *RequestContext) {}
 
 		if success, e := pathTree.addHandler("/something/{somethingelse}", &handler); !success {
 			t.Error("Not able to add Handler", e.Error())
