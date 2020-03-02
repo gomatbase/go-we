@@ -10,6 +10,7 @@ import (
 	"testing"
 )
 
+// Tests for PathTree endpoint adding.
 func TestAddRoutes(t *testing.T) {
 	pathTree := newPathTree()
 

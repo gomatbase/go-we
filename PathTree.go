@@ -18,24 +18,56 @@ const (
 )
 
 var (
+	// Regular expression to validate valid endpoints that can be added to the path tree. It supports standard url
+	// endpoints, path variables identified by {} brackets and standard alpha numeric names, single path node wildcards
+	// and multi-node matching wildcards
 	validPathExpression = regexp.MustCompile("^(/|(/(([a-zA-Z0-9_\\-@~]|%[0-9a-fA-f]{2})+|{[a-zA-Z0-9]+}|\\*\\*?))*/?)$")
 )
 
+// A node in the pathTree. Each node represents an element in the path, containing a matching value for the path tree
+// an object associated to the node (which makes it a terminating node, i.e. a matching path, and all the down path
+// children for the current element, aggregated by type of matchers. These will are the children elements (plain
+// path elements), variables (elements representing variables), if there is any child wildcard (any path element may
+// match it) or double wildcard children (any combination of path elements will match it.
 type treePathNode struct {
+	// the value of the current element. this may be a wildcard, double wildcard, a valid path segment  which should be
+	// matched exactly or a variable name, if the current node represents a variable. the type of the node is defined
+	// by the type of child that the node represents, meaning that the parent node defines what the value the the child
+	// node represents, depending on which category of children in the parent node the child node falls into.
 	value           string
+
+	// helper flag identifying the current node as a path variable node
 	pathVariable    bool
+
+	// helper flag identifying if the the current node has any children under any of the child categories
 	hasChildren     bool
-	wildCard       *treePathNode
-	doubleWildcard *treePathNode
+
+	// The handler for this node. If present it tags the current node as a terminating node, meaning that a match ending
+	// in this node is a successful match. If not present, a match ending in this node is not successful, and hence,
+	// not matched.
 	handler         interface{}
+
+	// Any simple child path elements that may have matches further down
 	children     []*treePathNode
+
+	// Any variable child path elements to match further down the path
 	variables    []*treePathNode
+
+	// A single wildcard child. If present, it allows matching further down any single child element
+	wildCard       *treePathNode
+
+	// A double wildcard child. If present, it allows matching any number of of child path elements.
+	doubleWildcard *treePathNode
 }
 
+// A path matching tree. it holds a single root node, not used for matching, but to categorize matches for the first
+// path element
 type pathTree struct {
+	// the root node
 	root *treePathNode
 }
 
+// Create a new path tree node, initialized with a value and no children
 func newTreeNode(name string) *treePathNode {
 	result := new(treePathNode)
 	result.value = name
@@ -44,19 +76,31 @@ func newTreeNode(name string) *treePathNode {
 	return result
 }
 
+// Create a new path tree, initializing the dummy root node.
 func newPathTree() *pathTree {
 	result := new(pathTree);
 	result.root = newTreeNode("root")
 	return result
 }
 
+// processes a path element for use as tree node value, stripping curly brackets from path variable elements so the
+// variable name can be used as the node value, and returns the type of path element the name parameter represents
+// (VALUE, PATH_VARIABLE, WILDCARD or DOUBLE_WILDCARD)
 func stripPart(name string) (string, int) {
 	firstCharacter := name[0]
 	partType := VALUE
+
+	// based on the valid path values that the path tree accepts (enforced through through the validPathExpression
+	// regex, if the name starts with a curly bracket it can only be a path variable, and the regex enforces that in
+	// such cases the last character will be a right side curly bracket. No additional checks are required.
 	if firstCharacter == '{' {
 		return name[1:len(name)-1], PATH_VARIABLE
 	}
 
+	// The validPathExpression regex also enforces that if a wildcard is present as a path element, it will always be
+	// either one or two wildcards. Based on that, we can confidently check that if the element is the size of a single
+	// element then it will be a single wildcard, and otherwise there will surely be two wildcards and it will be a
+	// double wildcard type
 	if firstCharacter == '*' {
 		if len(name) == 1 {
 			partType = WILDCARD
@@ -68,6 +112,10 @@ func stripPart(name string) (string, int) {
 	return name, partType
 }
 
+// Helper function to split the Path variable from the an http.Request in path elements (separated by forward slashes.
+// The validPathExpression regex will enforce paths with no empty path elements (double forward slashes). The simple
+// splitting process results in similar paths, with identical path elements and differing only in one having a final
+// forward slash while the other does not, to be considered identical.
 func splitPath(path string) []string {
 	// We ignore the first element which will always be empty (behind the forward slash)
 	parts := strings.Split(path, "/")[1:]
@@ -79,7 +127,10 @@ func splitPath(path string) []string {
 	return parts
 }
 
-//func (tree *pathTree) getHandlerAndPathVariables(path string) (func(w http.ResponseWriter, context *RequestContext), map[string]string) {
+// PathTree method that given a path will search the tree depth first for the most specific match, if present, and
+// extract the values of any path variables if the matched path expression has path variables. Returns the handler
+// for the path as well as a map of variables having the variable names as keys and the corresponding path elements
+// as values
 func (tree *pathTree) getHandlerAndPathVariables(path string) (interface{}, map[string]string) {
 	variables := make(map[string]string)
 	parts := splitPath(path)
@@ -91,13 +142,21 @@ func (tree *pathTree) getHandlerAndPathVariables(path string) (interface{}, map[
 	return nil,variables
 }
 
-// This is a recursive function, it will drill down the tree branches taking preference for the longest possible match
+// Recursive function that will drill down the tree branches and tries to find the longest matching path for the given
+// array of path elements. To ensure it takes the most specific match, for each node it will first drill down the
+// plain tree node children, then for variable node children, then drills down the wildcard child and finally through
+// the double wildcard child. The first full match will be considered the matching path. The child drill down order
+// effectively results in first matching for exact path matches, then for paths containing path variables, then with
+// wildcards and finally with double wildcards.
 func matchPathAndVariables(node *treePathNode, parts []string, variables map[string]string) *treePathNode {
+
 	// there are no more parts in the path, we return the current node if it has a handler
 	if len(parts) == 0 {
 		if node.handler != nil {
 			return node
 		}
+		// if there is no handler for the node, since there are no more element paths, the search down this
+		// branch ends without a match
 		return nil
 	}
 

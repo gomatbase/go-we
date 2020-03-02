@@ -7,73 +7,54 @@ package we
 import (
 	"log"
 	"net/http"
-	"net/url"
 )
 
 
+// Security Filter constants
 const (
+	// The default cookie name to be used for setting the session id's when none is provided
 	DEFAULT_SESSION_COOKIE_NAME = "WE-SESSION-ID"
 
+	// The security filter uses a PathTree to manage authenticated endpoints. This "peg" is used as a handler for
+	// the path tree, identifying an endpoint that should be authenticated
 	IGNORE_PATH_PEG = ""
 )
 
-var (
-	uaaClient string
-	appLoginEndpoint string
-)
-
-
-var (
-	sessionTimeout float64
-)
-
-/**
-The Security Filter is a default authentication/authorization checker that can be added as a filter to process incoming
-http requests.
-
-This filter will, by default, process every incoming http requests. Ignore expressions can be added to the filter which
-will allow the Security Filter to overlook checks for any of the incoming endpoints matching the path expression
-
-If the endpoint is for an authorization dependent endpoint (so, a non-ignorable endpoint), it will check if a session exists
-for the incoming request, and if not, it will trigger the configured authorization provider(s) if the request is authorized,
-and if not it will use the authorization provider to get instructions of how to react to the incoming request.
-
-By default, the security filter is created with an anonymous authentication provider, which accepts all requests, and will
-allow the security filter to create sessions if sessions are active.
-
-By default it will have an Anonymous authentication provider which will basically initiate a session with a placeholder
-map for session scoped objects
- */
+// The Security Filter is a default authentication/authorization checker that can be added as a filter to process incoming
+// http requests.
+//
+// This filter will, by default, process every incoming http requests. Ignore expressions can be added to the filter which
+// will allow the Security Filter to overlook checks for any of the incoming endpoints matching the path expression (which
+// by default will be for all)
+//
+// If the endpoint is for an authorization dependent endpoint (so, a non-ignorable endpoint), it will check if a session exists
+// for the incoming request, and if not, it will trigger the configured authorization provider(s) if the request is authorized,
+// and if not it will use the authorization provider to get instructions of how to react to the incoming request depending of
+// the type of the configured authentication provider (supporting three basic use cases, Basic Authentication, Login Form and
+// oauth2).
+//
+// By default, the security filter is created with an anonymous authentication provider, which accepts all requests.
 type SecurityFilter struct {
 	// Path Match tree to check for ignore paths
 	ignoreMap              *pathTree
-	authenticationUrl      url.URL
-	authenticationProvider *AuthenticationProvider
 
-	// attributes to handle sessions
-	// if sessions are to be created for incoming requests
-	useSessions bool
-	// map of active sessions
-	sessions map[string]*Session
-	// if sessions are identified with cookies
-	useSessionCookies bool
-	// the cookie name used to hold the session id
-	sessionCookieName     string
+	// The authentication provider used to verify and trigger authentication
+	authenticationProvider *AuthenticationProvider
 }
 
 // Create and initialize a new security filter
 func NewSecurityFilter() *SecurityFilter {
 	result := new(SecurityFilter)
 	result.ignoreMap = newPathTree()
-	result.sessions = make(map[string]*Session)
-	result.sessionCookieName = DEFAULT_SESSION_COOKIE_NAME
 	return result
 }
 
+// Adds a path to the ignore list
 func (sf *SecurityFilter) Ignore(path string) {
 	sf.ignoreMap.addHandler(path, IGNORE_PATH_PEG)
 }
 
+// Sets the authentication provider that should be used to handle authentication life-cycle
 func (sf *SecurityFilter) SetAuthenticationProvider(provider AuthenticationProvider) {
 	sf.authenticationProvider = &provider
 
@@ -87,6 +68,10 @@ func (sf *SecurityFilter) SetAuthenticationProvider(provider AuthenticationProvi
 	}
 }
 
+// Web Engine Filter implementation that will check if incoming requests are accessing authenticated endpoints, and if
+// so that they are properly authenticated. Depending on the type of authenticated provider, it may result in a
+// redirection response to an authentication url (for login form authentication providers as well as some flavours of
+// oauth2)
 func (sf *SecurityFilter) Filter(w http.ResponseWriter, ctx *RequestContext) (bool, error) {
 	if peg, _ := sf.ignoreMap.getHandlerAndPathVariables(ctx.Request.URL.Path); peg == nil {
 		log.Println("Security being checked")
