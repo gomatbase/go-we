@@ -5,16 +5,12 @@
 package we
 
 import (
-	"log"
 	"net/http"
 )
 
 
 // Security Filter constants
 const (
-	// The default cookie name to be used for setting the session id's when none is provided
-	DEFAULT_SESSION_COOKIE_NAME = "WE-SESSION-ID"
-
 	// The security filter uses a PathTree to manage authenticated endpoints. This "peg" is used as a handler for
 	// the path tree, identifying an endpoint that should be authenticated
 	IGNORE_PATH_PEG = ""
@@ -41,6 +37,7 @@ type SecurityFilter struct {
 	// The authentication provider used to verify and trigger authentication
 	authenticationProvider *AuthenticationProvider
 }
+
 
 // Create and initialize a new security filter
 func NewSecurityFilter() *SecurityFilter {
@@ -74,7 +71,6 @@ func (sf *SecurityFilter) SetAuthenticationProvider(provider AuthenticationProvi
 // oauth2)
 func (sf *SecurityFilter) Filter(w http.ResponseWriter, ctx *RequestContext) (bool, error) {
 	if peg, _ := sf.ignoreMap.getHandlerAndPathVariables(ctx.Request.URL.Path); peg == nil {
-		log.Println("Security being checked")
 		if (*sf.authenticationProvider).IsAuthorized(ctx) {
 			// the authorization provider considers the request authorized.
 			return true, nil
