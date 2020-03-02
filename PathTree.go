@@ -253,21 +253,34 @@ func (tree *pathTree) addHandler(path string, handler interface{}) (bool, error)
 	return true, nil
 }
 
+// Lists all the routes registered in the path tree
 func (tree *pathTree) ListRoutes() []string {
 	// let's build the list of registered endpoints from the root
 	return getRoutes("",tree.root)
 }
 
+// Recursive function that will drill down depth-first tree branches and return the registered endpoint paths from
+// the current branch. The function is called with the full sub-path of all the parent nodes, which act as prefix for
+// all sub-paths found in the current node
 func getRoutes(prefix string, node *treePathNode) []string {
 	var listOfRoutes []string
+
+	// path variable nodes are identified by the flag and returned with curly brackets to make them identifiable
+	// the node value is added to the prefix being the full path to reach the current node, and the prefix for all
+	// child node paths
 	if node.pathVariable {
 		prefix = prefix + "/{" + node.value + "}"
 	} else {
 		prefix = prefix + "/" + node.value
 	}
+
+	// If the current node has a handler then it matches an endpoint. We add it to the list of all sub-path endpoints
+	// starting at the current node
 	if node.handler != nil {
 		listOfRoutes = []string{prefix}
 	}
+
+	// All the children nodes of the current node will be drilled down to find their matching sub-paths
 	for _, child := range node.children {
 		listOfRoutes = append(listOfRoutes, getRoutes( prefix, child)...)
 	}
@@ -280,10 +293,12 @@ func getRoutes(prefix string, node *treePathNode) []string {
 	if node.doubleWildcard != nil {
 		listOfRoutes = append(listOfRoutes, getRoutes( prefix, node.doubleWildcard)...)
 	}
+
+	// Returns all the paths found down this node.
     return listOfRoutes
 }
 
-// recursive function to check the match of a path signature through any of the branches
+// recursive function to check a match for a path signature through any of the branches
 func matchSignature(node *treePathNode, parts []string, depth int) (*treePathNode, int, bool) {
 	// if there are no more parts, we return the current node, and consider it found if the node has a handler
 	if len(parts) == 0 {
