@@ -15,8 +15,8 @@ import (
 // engine), parsed path variables for endpoints that expect them and a session object if sessions are in use.
 type RequestContext struct {
 	Request   *http.Request
-	Context    map[string]interface{}
-	Variables  map[string]string
+	Context   map[string]interface{}
+	Variables map[string]string
 	Session   *Session
 }
 
@@ -44,7 +44,7 @@ type WebEngine struct {
 // used with a default session time out and using and in-memory session manager.
 func NewWebEngine() *WebEngine {
 	webContext := new(WebEngine)
-	webContext.filters = []func(w http.ResponseWriter, context *RequestContext) (bool,error){}
+	webContext.filters = []func(w http.ResponseWriter, context *RequestContext) (bool, error){}
 	webContext.matchTree = newPathTree()
 	webContext.sessionManager = NewInMemorySessionManager()
 	webContext.sessionTimeout = DEFAULT_SESSION_TIMEOUT
@@ -106,9 +106,13 @@ func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// fetch an existing session or just create one, if using sessions, to add to the request context
 	log.Println("fetching session")
 	session := wc.fetchOrCreateSession(r)
-	if session != nil && session.Status == NEW {
-		// let's add the session if to the cookies
-		http.SetCookie(w, &http.Cookie{Name:wc.sessionCookieName, Value: session.SessionId, Path: "/" })
+	if session != nil {
+		defer func() { session.lastUse = time.Now() }()
+		if session.Status == NEW {
+			// let's add the session if to the cookies
+			http.SetCookie(w, &http.Cookie{Name: wc.sessionCookieName, Value: session.SessionId, Path: "/"})
+			defer func() { session.Status = EXISTING }()
+		}
 	}
 
 	// request context is always created fresh for an incoming request
@@ -129,9 +133,6 @@ func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		handler.(func(w http.ResponseWriter, context *RequestContext) error)(w, requestContext)
 	}
 
-	// update session use timestamp and Status
-	session.Status = EXISTING
-	session.lastUse = time.Now()
 }
 
 // Function to get the session belonging to the given request IF the engine has sessions active.
