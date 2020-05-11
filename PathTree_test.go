@@ -31,7 +31,7 @@ func TestAddRoutes(t *testing.T) {
 		handler := new(Handler)
 		log.Println("handler is", handler)
 		if success, e := pathTree.addHandler("/", handler); !success {
-			t.Error("Not able to add Handler", e.Error())
+			t.Error("Not able to add Handler", e)
 		} else {
 			registeredHandler, variables := pathTree.getHandlerAndPathVariables("/")
 			if registeredHandler == nil {
@@ -72,7 +72,7 @@ func TestAddRoutes(t *testing.T) {
 		handler := func(w http.ResponseWriter, context *RequestContext) {}
 
 		if success, e := pathTree.addHandler("/something/somethingelse", &handler); !success {
-			t.Error("Not able to add Handler", e.Error())
+			t.Error("Not able to add Handler", e)
 		}
 		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/something/somethingelse")
 		if registeredHandler != &handler {
@@ -92,7 +92,7 @@ func TestAddRoutes(t *testing.T) {
 		handler := func(w http.ResponseWriter, context *RequestContext) {}
 
 		if success, e := pathTree.addHandler("/something/{somethingelse}", &handler); !success {
-			t.Error("Not able to add Handler", e.Error())
+			t.Error("Not able to add Handler", e)
 		}
 
 		// the static handler should take precendence
@@ -122,11 +122,11 @@ func TestAddRoutes(t *testing.T) {
 		handler2 := func(w http.ResponseWriter, context *RequestContext) {}
 
 		if success, e := pathTree.addHandler("/something/somethingelse/uno", &handler1); !success {
-			t.Error("Not able to add Handler", e.Error())
+			t.Error("Not able to add Handler", e)
 		}
 
 		if success, e := pathTree.addHandler("/something/somethingelse/dos", &handler2); !success {
-			t.Error("Not able to add Handler", e.Error())
+			t.Error("Not able to add Handler", e)
 		}
 
 		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/something/somethingelse/uno")
@@ -149,11 +149,11 @@ func TestAddRoutes(t *testing.T) {
 		handler2 := func(w http.ResponseWriter, context *RequestContext) {}
 
 		if success, e := pathTree.addHandler("/somethingwithvars/{somethingelse}/uno", &handler1); !success {
-			t.Error("Not able to add Handler", e.Error())
+			t.Error("Not able to add Handler", e)
 		}
 
 		if success, e := pathTree.addHandler("/somethingwithvars/{somethingelse}/dos", &handler2); !success {
-			t.Error("Not able to add Handler", e.Error())
+			t.Error("Not able to add Handler", e)
 		}
 
 		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/somethingwithvars/somethingelse/uno")
