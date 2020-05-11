@@ -117,4 +117,58 @@ func TestAddRoutes(t *testing.T) {
 		}
 	})
 
+	t.Run("Test adding matching prefixed paths", func(t *testing.T) {
+		handler1 := func(w http.ResponseWriter, context *RequestContext) {}
+		handler2 := func(w http.ResponseWriter, context *RequestContext) {}
+
+		if success, e := pathTree.addHandler("/something/somethingelse/uno", &handler1); !success {
+			t.Error("Not able to add Handler", e.Error())
+		}
+
+		if success, e := pathTree.addHandler("/something/somethingelse/dos", &handler2); !success {
+			t.Error("Not able to add Handler", e.Error())
+		}
+
+		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/something/somethingelse/uno")
+		if registeredHandler != &handler1 {
+			t.Error("Unexpected registered handler for /something/somethingelse/uno", registeredHandler)
+		} else if len(variables) > 0 {
+			t.Error("Unexpected Path Variables found in endpoint", variables)
+		}
+
+		registeredHandler, variables = pathTree.getHandlerAndPathVariables("/something/somethingelse/dos")
+		if registeredHandler != &handler2 {
+			t.Error("Unexpected registered handler for /something/somethingelse/dos", registeredHandler)
+		} else if len(variables) > 0 {
+			t.Error("Unexpected Path Variables found in endpoint", variables)
+		}
+	})
+
+	t.Run("Test adding matching prefixed paths with variables", func(t *testing.T) {
+		handler1 := func(w http.ResponseWriter, context *RequestContext) {}
+		handler2 := func(w http.ResponseWriter, context *RequestContext) {}
+
+		if success, e := pathTree.addHandler("/somethingwithvars/{somethingelse}/uno", &handler1); !success {
+			t.Error("Not able to add Handler", e.Error())
+		}
+
+		if success, e := pathTree.addHandler("/somethingwithvars/{somethingelse}/dos", &handler2); !success {
+			t.Error("Not able to add Handler", e.Error())
+		}
+
+		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/somethingwithvars/somethingelse/uno")
+		if registeredHandler != &handler1 {
+			t.Error("Unexpected registered handler for /somethingwithvars/{somethingelse}/uno", registeredHandler)
+		} else if len(variables) != 1 {
+			t.Error("Unexpected Path Variables found in endpoint", variables)
+		}
+
+		registeredHandler, variables = pathTree.getHandlerAndPathVariables("/somethingwithvars/somethingelse/dos")
+		if registeredHandler != &handler2 {
+			t.Error("Unexpected registered handler for /somethingwithvars/{somethingelse}/dos", registeredHandler)
+		} else if len(variables) != 1 {
+			t.Error("Unexpected Path Variables found in endpoint", variables)
+		}
+	})
+
 }
