@@ -5,7 +5,6 @@
 package we
 
 import (
-	"log"
 	"regexp"
 	"strings"
 )
@@ -162,7 +161,7 @@ func matchPathAndVariables(node *treePathNode, parts []string, variables map[str
 	}
 
 	// for each child, we check if there is an exact match
-	log.Println(parts[0])
+	// log.Println(parts[0])
 	var currentMatch *treePathNode
 	remainingParts := parts[1:]
 	for _, child := range node.children {
@@ -303,7 +302,7 @@ func getRoutes(prefix string, node *treePathNode) []string {
 func matchSignature(node *treePathNode, parts []string, depth int) (*treePathNode, int, bool) {
 	// if there are no more parts, we return the current node, and consider it found if the node has a handler
 	if len(parts) == 0 {
-		log.Println("signature not found")
+		// log.Println("signature not found")
 		return node, depth, node.handler != nil
 	}
 

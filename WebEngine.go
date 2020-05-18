@@ -33,7 +33,7 @@ type Filter interface {
 // A Web state structure
 type WebEngine struct {
 	filters           []func(w http.ResponseWriter, context *RequestContext) (bool, error)
-	matchTree         *pathTree
+	matchTrees        map[string]*pathTree
 	sessionManager    SessionManager
 	useSessions       bool
 	sessionCookieName string
@@ -45,7 +45,7 @@ type WebEngine struct {
 func NewWebEngine() *WebEngine {
 	webContext := new(WebEngine)
 	webContext.filters = []func(w http.ResponseWriter, context *RequestContext) (bool, error){}
-	webContext.matchTree = newPathTree()
+	webContext.matchTrees = map[string]*pathTree{"ALL": newPathTree()}
 	webContext.sessionManager = NewInMemorySessionManager()
 	webContext.sessionTimeout = DEFAULT_SESSION_TIMEOUT
 	webContext.useSessions = true
@@ -82,20 +82,44 @@ func (wc *WebEngine) AddFilterFunc(filter func(w http.ResponseWriter, context *R
 
 // Add a handling function to the engine
 func (wc *WebEngine) AddHandlerFunc(path string, handler func(w http.ResponseWriter, context *RequestContext) error) {
-	wc.matchTree.addHandler(path, handler)
+	wc.matchTrees["ALL"].addHandler(path, handler)
+}
+
+func (wc *WebEngine) AddMethodHandlerFunc(method string, path string, handler func(w http.ResponseWriter, context *RequestContext) error) {
+	pathTree, found := wc.matchTrees[method]
+	if !found {
+		pathTree = newPathTree()
+		wc.matchTrees[method] = pathTree
+	}
+	pathTree.addHandler(path, handler)
 }
 
 // Utility function to attach a handler to a path
 func (wc *WebEngine) AddHandler(path string, handler Handler) {
-	wc.AddHandlerFunc(path, handler.Handle)
+	wc.AddMethodHandlerFunc("ALL", path, handler.Handle)
+}
+
+func (wc *WebEngine) AddMethodHandler(method string, path string, handler Handler) {
+	wc.AddMethodHandlerFunc(method, path, handler.Handle)
 }
 
 // http.Handler implementation of the WebEngine which will handle the http request life-cycle, including session
 // management, filter processing and error handling
 func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
+	method := r.Method
+	pathTree, found := wc.matchTrees[method]
+	if !found {
+		method = "ALL"
+		pathTree = wc.matchTrees[method]
+	}
+
 	// match the incoming endpoint to a registered handler
-	handler, variables := wc.matchTree.getHandlerAndPathVariables(r.URL.Path)
+	handler, variables := pathTree.getHandlerAndPathVariables(r.URL.Path)
+	if handler == nil && found {
+		pathTree = wc.matchTrees[method]
+		handler, variables = pathTree.getHandlerAndPathVariables(r.URL.Path)
+	}
 
 	// We first check if the request is incoming for a handled endpoint. If not we just return 404
 	if handler == nil {
@@ -109,7 +133,7 @@ func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if session != nil {
 		defer func() { session.lastUse = time.Now() }()
 		if session.Status == NEW {
-			// let's add the session if to the cookies
+			// let's add the session id to the cookies
 			http.SetCookie(w, &http.Cookie{Name: wc.sessionCookieName, Value: session.SessionId, Path: "/"})
 			defer func() { session.Status = EXISTING }()
 		}
