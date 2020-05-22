@@ -117,7 +117,7 @@ func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// match the incoming endpoint to a registered handler
 	handler, variables := pathTree.getHandlerAndPathVariables(r.URL.Path)
 	if handler == nil && found {
-		pathTree = wc.matchTrees[method]
+		pathTree = wc.matchTrees["ALL"]
 		handler, variables = pathTree.getHandlerAndPathVariables(r.URL.Path)
 	}
 
