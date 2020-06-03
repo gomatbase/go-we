@@ -5,7 +5,6 @@
 package we
 
 import (
-	"log"
 	"net/http"
 	"time"
 )
@@ -128,7 +127,6 @@ func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// fetch an existing session or just create one, if using sessions, to add to the request context
-	log.Println("fetching session")
 	session := wc.fetchOrCreateSession(r)
 	if session != nil {
 		defer func() { session.lastUse = time.Now() }()
