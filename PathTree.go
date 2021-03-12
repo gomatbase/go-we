@@ -200,15 +200,15 @@ func matchPathAndVariables(node *treePathNode, parts []string, variables map[str
 
 	// finally, we try the double wildcard if present
 	if node.doubleWildcard != nil {
-		// if the double wildcard branch also has a single or double wildcard, then we drill down the branch, if not we keep it where it is
-		nextNode := node
-		if node.doubleWildcard.wildCard != nil || node.doubleWildcard.doubleWildcard != nil {
-			nextNode = node.doubleWildcard
-		}
-		if foundMatch := matchPathAndVariables(nextNode, remainingParts, variables); foundMatch != nil {
-			// there was a match down this path, so we add the current part value as a variable and return it
-			return foundMatch
-		}
+
+		// if the double wildcard has no children, then we return the node
+		// if !node.doubleWildcard.hasChildren {
+		// 	return node.doubleWildcard
+		// }
+
+		// TODO if it has children we need to match the suffixed children. Use wildcard handler for now
+		remainingParts = remainingParts[len(remainingParts):]
+		return matchPathAndVariables(node.doubleWildcard, remainingParts, variables)
 	}
 
 	// nothing was found return nothing
