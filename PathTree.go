@@ -21,7 +21,7 @@ var (
 	// Regular expression to validate valid endpoints that can be added to the path tree. It supports standard url
 	// endpoints, path variables identified by {} brackets and standard alpha numeric names, single path node wildcards
 	// and multi-node matching wildcards
-	validPathExpression = regexp.MustCompile("^(/|(/(([a-zA-Z0-9_\\-@~]|%[0-9a-fA-f]{2})+|{[a-zA-Z0-9]+}|\\*\\*?))*/?)$")
+	validPathExpression = regexp.MustCompile("^(/|(/(([a-zA-Z0-9_.\\-@~]|%[0-9a-fA-f]{2})+|{[a-zA-Z0-9]+}|\\*\\*?))*/?)$")
 )
 
 // A node in the pathTree. Each node represents an element in the path, containing a matching value for the path tree
