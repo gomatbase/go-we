@@ -141,7 +141,7 @@ func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestContext := newRequestContext(r, variables, session)
 
 	// First process all filters in registration order
-	var filtersSuccessful bool
+	filtersSuccessful := true
 	for _, filter := range wc.filters {
 		// ignore the error for now
 		if filtersSuccessful, _ = filter(w, requestContext); !filtersSuccessful {
