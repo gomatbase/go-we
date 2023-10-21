@@ -6,12 +6,11 @@ package we
 
 import (
 	"net/http"
-	"time"
 )
 
 // http.Request wrapper providing a web engine context that allows filters to enrich it and expose payloads for
 // request handlers as well as filters posterior filters (filters are triggered in the order they were added to the
-// engine), parsed path variables for endpoints that expect them and a session object if sessions are in use.
+// engine), parsed path variables for endpoints that expect them and a Session object if sessions are in use.
 type RequestContext struct {
 	Request   *http.Request
 	Context   map[string]interface{}
@@ -31,36 +30,23 @@ type Filter interface {
 
 // A Web state structure
 type WebEngine struct {
-	filters           []func(w http.ResponseWriter, context *RequestContext) (bool, error)
-	matchTrees        map[string]*pathTree
-	sessionManager    SessionManager
-	useSessions       bool
-	sessionCookieName string
-	sessionTimeout    float64
+	filters        []func(w http.ResponseWriter, context *RequestContext) (bool, error)
+	matchTrees     map[string]*pathTree
+	sessionManager SessionManager
 }
 
 // Create a new Web Engine with default behaviours and settings. Namely, no filters will be present, sessions will be
-// used with a default session time out and using and in-memory session manager.
+// used with a default Session time out and using and in-memory Session manager.
 func NewWebEngine() *WebEngine {
 	webContext := new(WebEngine)
 	webContext.filters = []func(w http.ResponseWriter, context *RequestContext) (bool, error){}
 	webContext.matchTrees = map[string]*pathTree{"ALL": newPathTree()}
-	webContext.sessionManager = NewInMemorySessionManager()
-	webContext.sessionTimeout = DEFAULT_SESSION_TIMEOUT
-	webContext.useSessions = true
-	webContext.sessionCookieName = "weSessionId"
 	return webContext
 }
 
-// Sets the session timeout, after which sessions are eligible for scraping and those who are not will be cleared
-// when accessed
-func (wc *WebEngine) SetSessionTimeout(seconds float64) {
-	wc.sessionTimeout = seconds
-}
-
 // Activates or deactivates the use of sessions in the web engine. By default, sessions are used.
-func (wc *WebEngine) UseSessions(flag bool) {
-	wc.useSessions = flag
+func (wc *WebEngine) SetSessionManager(sessionManager SessionManager) {
+	wc.sessionManager = sessionManager
 }
 
 // creates a new request context from an incoming request
@@ -102,7 +88,7 @@ func (wc *WebEngine) AddMethodHandler(method string, path string, handler Handle
 	wc.AddMethodHandlerFunc(method, path, handler.Handle)
 }
 
-// http.Handler implementation of the WebEngine which will handle the http request life-cycle, including session
+// http.Handler implementation of the WebEngine which will handle the http request life-cycle, including Session
 // management, filter processing and error handling
 func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
@@ -126,15 +112,9 @@ func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// fetch an existing session or just create one, if using sessions, to add to the request context
-	session := wc.fetchOrCreateSession(r)
-	if session != nil {
-		defer func() { session.lastUse = time.Now() }()
-		if session.Status == NEW {
-			// let's add the session id to the cookies
-			http.SetCookie(w, &http.Cookie{Name: wc.sessionCookieName, Value: session.SessionId, Path: "/"})
-			defer func() { session.Status = EXISTING }()
-		}
+	var session *Session
+	if wc.sessionManager != nil {
+		session = wc.sessionManager.GetHttpSession(w, r)
 	}
 
 	// request context is always created fresh for an incoming request
@@ -155,33 +135,4 @@ func (wc *WebEngine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		handler.(func(w http.ResponseWriter, context *RequestContext) error)(w, requestContext)
 	}
 
-}
-
-// Function to get the session belonging to the given request IF the engine has sessions active.
-// If sessions are active, a session will always be returned, either a newly created one or a stored one matching
-// whatever session identification process is present in the request (typically a cookie)
-func (wc *WebEngine) fetchOrCreateSession(r *http.Request) *Session {
-
-	// if sessions are meant to be used (default), we first try to get it from a session cookie
-	if wc.useSessions {
-		sessionToken, cookieFetchError := r.Cookie(wc.sessionCookieName)
-		if cookieFetchError != http.ErrNoCookie {
-			if session := wc.sessionManager.Get(sessionToken.Value); session != nil {
-				if time.Now().Sub(session.lastUse).Seconds() < wc.sessionTimeout {
-					return session
-				}
-				// session expired
-				session.clear()
-				return session
-			}
-		}
-
-		// we ignore mismatched session ids, let's just create one
-		session := newSession()
-		wc.sessionManager.Add(session)
-		return session
-	}
-
-	// sessions are not used...
-	return nil
 }

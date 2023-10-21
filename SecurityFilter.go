@@ -8,7 +8,6 @@ import (
 	"net/http"
 )
 
-
 // Security Filter constants
 const (
 	// The security filter uses a PathTree to manage authenticated endpoints. This "peg" is used as a handler for
@@ -32,12 +31,11 @@ const (
 // By default, the security filter is created with an anonymous authentication provider, which accepts all requests.
 type SecurityFilter struct {
 	// Path Match tree to check for ignore paths
-	ignoreMap              *pathTree
+	ignoreMap *pathTree
 
 	// The authentication provider used to verify and trigger authentication
 	authenticationProvider *AuthenticationProvider
 }
-
 
 // Create and initialize a new security filter
 func NewSecurityFilter() *SecurityFilter {
@@ -85,4 +83,3 @@ func (sf *SecurityFilter) Filter(w http.ResponseWriter, ctx *RequestContext) (bo
 
 	return true, nil
 }
-
