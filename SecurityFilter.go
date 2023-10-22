@@ -67,15 +67,15 @@ func (sf *SecurityFilter) SetAuthenticationProvider(provider AuthenticationProvi
 // so that they are properly authenticated. Depending on the type of authenticated provider, it may result in a
 // redirection response to an authentication url (for login form authentication providers as well as some flavours of
 // oauth2)
-func (sf *SecurityFilter) Filter(w http.ResponseWriter, ctx *RequestContext) (bool, error) {
-	if peg, _ := sf.ignoreMap.getHandlerAndPathVariables(ctx.Request.URL.Path); peg == nil {
-		if (*sf.authenticationProvider).IsAuthorized(ctx) {
+func (sf *SecurityFilter) Filter(w http.ResponseWriter, scope RequestScope) (bool, error) {
+	if peg, _ := sf.ignoreMap.getHandlerAndPathVariables(scope.Request().URL.Path); peg == nil {
+		if (*sf.authenticationProvider).IsAuthorized(scope) {
 			// the authorization provider considers the request authorized.
 			return true, nil
 		}
 
 		// not authorized, let's handle the authorization
-		if !(*sf.authenticationProvider).HandleAuthentication(w, ctx) {
+		if !(*sf.authenticationProvider).HandleAuthentication(w, scope) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		}
 		return false, nil

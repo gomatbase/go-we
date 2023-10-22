@@ -17,8 +17,8 @@ const (
 
 type AuthenticationProvider interface {
 	GetType() uint32
-	IsAuthorized(context *RequestContext) bool
-	HandleAuthentication(w http.ResponseWriter, context *RequestContext) bool
+	IsAuthorized(scope RequestScope) bool
+	HandleAuthentication(w http.ResponseWriter, scope RequestScope) bool
 }
 
 type OAuth2AuthenticationProvider interface {
