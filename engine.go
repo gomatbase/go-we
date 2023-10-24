@@ -11,7 +11,9 @@ import (
 type RequestScope interface {
 	Request() *http.Request
 	Var(string) string
+	LookupVar(string) (string, bool)
 	Parameter(string) string
+	LookupParameter(string) (string, bool)
 	Get(string) interface{}
 	Set(string, interface{})
 	GetFromSession(string) interface{}
@@ -34,11 +36,23 @@ func (rs *requestScope) Var(name string) string {
 	return rs.variables[name]
 }
 
+func (rs *requestScope) LookupVar(name string) (value string, found bool) {
+	value, found = rs.variables[name]
+	return
+}
+
 func (rs *requestScope) Parameter(name string) string {
 	if rs.parameters != nil {
 		return rs.parameters[name]
 	}
 	return ""
+}
+
+func (rs *requestScope) LookupParameter(name string) (value string, found bool) {
+	if rs.parameters != nil {
+		value, found = rs.parameters[name]
+	}
+	return
 }
 
 func (rs *requestScope) Get(key string) interface{} {
