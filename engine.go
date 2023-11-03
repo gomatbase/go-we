@@ -187,6 +187,6 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 
 func New() WebEngine {
 	return &webEngine{
-		matchTrees: make(map[string]*pathTree),
+		matchTrees: map[string]*pathTree{"ALL": newPathTree()},
 	}
 }
