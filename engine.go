@@ -80,6 +80,13 @@ type HandlerFunction func(http.ResponseWriter, RequestScope) error
 
 type FilterFunction func(http.ResponseWriter, RequestScope) (bool, error)
 
+func (ff FilterFunction) Filter(w http.ResponseWriter, scope RequestScope) (bool, error) {
+	return ff(w, scope)
+}
+
+type Filter interface {
+	Filter(http.ResponseWriter, RequestScope) (bool, error)
+}
 type WebEngine interface {
 	SetSessionManager(sessionManager SessionManager)
 	Handle(path string, handler HandlerFunction)
