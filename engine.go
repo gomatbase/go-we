@@ -13,7 +13,9 @@ type RequestScope interface {
 	Var(string) string
 	LookupVar(string) (string, bool)
 	Parameter(string) string
+	Parameters(string) []string
 	LookupParameter(string) (string, bool)
+	LookupParameters(string) ([]string, bool)
 	Get(string) interface{}
 	Set(string, interface{})
 	GetFromSession(string) interface{}
@@ -24,7 +26,6 @@ type requestScope struct {
 	request    *http.Request
 	attributes map[string]interface{}
 	variables  map[string]string
-	parameters map[string]string
 	session    *Session
 }
 
@@ -42,17 +43,27 @@ func (rs *requestScope) LookupVar(name string) (value string, found bool) {
 }
 
 func (rs *requestScope) Parameter(name string) string {
-	if rs.parameters != nil {
-		return rs.parameters[name]
-	}
-	return ""
+	return rs.request.URL.Query().Get(name)
 }
 
-func (rs *requestScope) LookupParameter(name string) (value string, found bool) {
-	if rs.parameters != nil {
-		value, found = rs.parameters[name]
+func (rs *requestScope) Parameters(name string) []string {
+	return rs.request.URL.Query()[name]
+}
+
+func (rs *requestScope) LookupParameter(name string) (string, bool) {
+	if values, found := rs.request.URL.Query()[name]; found {
+		if len(values) > 0 {
+			return values[0], true
+		}
 	}
-	return
+	return "", false
+}
+
+func (rs *requestScope) LookupParameters(name string) ([]string, bool) {
+	if values, found := rs.request.URL.Query()[name]; found {
+		return values, true
+	}
+	return nil, false
 }
 
 func (rs *requestScope) Get(key string) interface{} {
@@ -164,7 +175,6 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 		request:    r,
 		attributes: make(map[string]interface{}),
 		variables:  variables,
-		parameters: nil, // TODO: handle query parameters
 		session:    session,
 	}
 
