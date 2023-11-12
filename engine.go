@@ -6,6 +6,8 @@ package we
 
 import (
 	"net/http"
+
+	"github.com/gomatbase/go-we/errors"
 )
 
 type RequestScope interface {
@@ -87,12 +89,12 @@ func (rs *requestScope) SetInSession(key string, value interface{}) {
 	}
 }
 
-type HandlerFunction func(http.ResponseWriter, RequestScope) error
+type HandlerFunction func(ResponseWriter, RequestScope) error
 
-type FilterFunction func(http.ResponseWriter, RequestScope) (bool, error)
+type FilterFunction func(RequestScope) error
 
-func (ff FilterFunction) Filter(w http.ResponseWriter, scope RequestScope) (bool, error) {
-	return ff(w, scope)
+func (ff FilterFunction) Filter(scope RequestScope) error {
+	return ff(scope)
 }
 
 type Filter interface {
@@ -112,6 +114,7 @@ type webEngine struct {
 	filters        []FilterFunction
 	matchTrees     map[string]*pathTree
 	sessionManager SessionManager
+	errorHandler   ErrorHandler
 }
 
 func (wc *webEngine) Handle(path string, handler HandlerFunction) {
@@ -136,14 +139,33 @@ func (wc *webEngine) SetSessionManager(sessionManager SessionManager) {
 }
 
 func (wc *webEngine) Listen(addr string) error {
+	if wc.errorHandler == nil {
+		wc.errorHandler = &errorHandler{
+			errorCatalog:   make(map[string]ErrorHandler),
+			weErrorCatalog: make(map[int]ErrorHandler),
+		}
+	}
 	return http.ListenAndServe(addr, wc.Handler())
 }
 
 func (wc *webEngine) Handler() http.Handler {
+	if wc.errorHandler == nil {
+		wc.errorHandler = &errorHandler{
+			errorCatalog:   make(map[string]ErrorHandler),
+			weErrorCatalog: make(map[int]ErrorHandler),
+		}
+	}
 	return http.HandlerFunc(wc.process)
 }
 
 func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
+
+	rw := &responseWriter{httpResponseWriter: w}
+	defer func() {
+		if recovery := recover(); recovery != nil {
+			wc.errorHandler.HandleError(rw, errors.InternalServerError, nil)
+		}
+	}()
 
 	method := r.Method
 	pt, found := wc.matchTrees[method]
@@ -161,36 +183,35 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 
 	// We first check if the request is incoming for a handled endpoint. If not we just return 404
 	if handler == nil {
-		http.Error(w, "Not Found", http.StatusNotFound)
+		wc.errorHandler.HandleError(rw, errors.NotFoundError, nil)
 		return
-	}
-
-	var session *Session
-	if wc.sessionManager != nil {
-		session = wc.sessionManager.GetHttpSession(w, r)
 	}
 
 	// request context is always created fresh for an incoming request
 	scope := &requestScope{
 		request:    r,
-		attributes: make(map[string]interface{}),
 		variables:  variables,
-		session:    session,
+		attributes: make(map[string]interface{}),
+	}
+	if wc.sessionManager != nil {
+		scope.session = wc.sessionManager.GetHttpSession(w, r)
 	}
 
 	// First process all filters in registration order
-	filtersSuccessful := true
+	var e error
 	for _, filter := range wc.filters {
 		// ignore the error for now
-		if filtersSuccessful, _ = filter(w, scope); !filtersSuccessful {
-			// Any of the filters may stop the process at any time. it's up to the filter to provide a proper  response handling
-			break
+		if e = filter(scope); e != nil {
+			// Any of the filters may stop the process at any time. returning an error allows the filter to break
+			// the chain and provide a means to re response
+			wc.errorHandler.HandleError(rw, e, scope)
+			return
 		}
 	}
 
 	// All filters processed successfully, time to handle the request
-	if filtersSuccessful {
-		handler.(HandlerFunction)(w, scope)
+	if e = handler.(HandlerFunction)(rw, scope); e != nil {
+		wc.errorHandler.HandleError(rw, e, scope)
 	}
 
 }
