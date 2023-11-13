@@ -24,6 +24,9 @@ type RequestScope interface {
 	SetInSession(string, interface{})
 }
 
+type Headers interface {
+}
+
 type requestScope struct {
 	request    *http.Request
 	attributes map[string]interface{}
@@ -91,10 +94,10 @@ func (rs *requestScope) SetInSession(key string, value interface{}) {
 
 type HandlerFunction func(ResponseWriter, RequestScope) error
 
-type FilterFunction func(RequestScope) error
+type FilterFunction func(http.Header, RequestScope) error
 
-func (ff FilterFunction) Filter(scope RequestScope) error {
-	return ff(scope)
+func (ff FilterFunction) Filter(headers http.Header, scope RequestScope) error {
+	return ff(headers, scope)
 }
 
 type Filter interface {
@@ -201,7 +204,7 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 	var e error
 	for _, filter := range wc.filters {
 		// ignore the error for now
-		if e = filter(scope); e != nil {
+		if e = filter(rw.Header(), scope); e != nil {
 			// Any of the filters may stop the process at any time. returning an error allows the filter to break
 			// the chain and provide a means to re response
 			wc.errorHandler.HandleError(rw, e, scope)
