@@ -6,7 +6,6 @@ package we
 
 import (
 	"log"
-	"net/http"
 	"testing"
 )
 
@@ -28,7 +27,7 @@ func TestAddRoutes(t *testing.T) {
 	})
 
 	t.Run("Test adding a root handler", func(t *testing.T) {
-		handler := new(Handler)
+		handler := new(any)
 		log.Println("handler is", handler)
 		if success, e := pathTree.addHandler("/", handler); !success {
 			t.Error("Not able to add Handler", e)
@@ -52,7 +51,7 @@ func TestAddRoutes(t *testing.T) {
 	})
 
 	t.Run("Test overloading a root handler", func(t *testing.T) {
-		handler := new(Handler)
+		handler := new(any)
 		if success, _ := pathTree.addHandler("/", handler); success {
 			t.Error("Was able to  overload root handler")
 		}
@@ -69,7 +68,7 @@ func TestAddRoutes(t *testing.T) {
 	})
 
 	t.Run("Test adding a static handler", func(t *testing.T) {
-		handler := func(w http.ResponseWriter, context *RequestContext) {}
+		handler := new(any)
 
 		if success, e := pathTree.addHandler("/something/somethingelse", &handler); !success {
 			t.Error("Not able to add Handler", e)
@@ -89,7 +88,7 @@ func TestAddRoutes(t *testing.T) {
 	})
 
 	t.Run("Test adding a variable handler", func(t *testing.T) {
-		handler := func(w http.ResponseWriter, context *RequestContext) {}
+		handler := new(any)
 
 		if success, e := pathTree.addHandler("/something/{somethingelse}", &handler); !success {
 			t.Error("Not able to add Handler", e)
@@ -118,8 +117,8 @@ func TestAddRoutes(t *testing.T) {
 	})
 
 	t.Run("Test adding matching prefixed paths", func(t *testing.T) {
-		handler1 := func(w http.ResponseWriter, context *RequestContext) {}
-		handler2 := func(w http.ResponseWriter, context *RequestContext) {}
+		handler1 := new(any)
+		handler2 := new(any)
 
 		if success, e := pathTree.addHandler("/something/somethingelse/uno", &handler1); !success {
 			t.Error("Not able to add Handler", e)
@@ -145,8 +144,8 @@ func TestAddRoutes(t *testing.T) {
 	})
 
 	t.Run("Test adding matching prefixed paths with variables", func(t *testing.T) {
-		handler1 := func(w http.ResponseWriter, context *RequestContext) {}
-		handler2 := func(w http.ResponseWriter, context *RequestContext) {}
+		handler1 := new(any)
+		handler2 := new(any)
 
 		if success, e := pathTree.addHandler("/somethingwithvars/{somethingelse}/uno", &handler1); !success {
 			t.Error("Not able to add Handler", e)
