@@ -2,7 +2,7 @@
 // Since 27/02/2020 By GOM
 // Licensed under MIT License
 
-package we
+package pathTree
 
 import (
 	"errors"
@@ -26,6 +26,22 @@ var (
 	validPathExpression = regexp.MustCompile("^(/|(/(([a-zA-Z0-9_.\\-@~]|%[0-9a-fA-f]{2})+|{[a-zA-Z0-9]+}|\\*\\*?))*/?)$")
 )
 
+// Tree is a Path Tree, holding paths where each path component is a node which may have a value. A node with a value marks
+// a full path, while nodes with no values (just the key which is a path component) mark an intermediate node in the tree.
+// Leaves always have a value. Path components may be names, variables or wildcards, and when matching path routes in
+// the tree, the order of precedence when matching path node is name, variable, single wildcard and double wildcard.
+type Tree interface {
+	// Get returns the closest matching value to a given path as well as a map of any identified
+	// variables when matching the path, if any.
+	Get(path string) (any, map[string]string)
+	// Add adds a value to the given path. May return an error if the path will match an exact existing path
+	// with the same specificity, i.e., having exactly the same sequence of names, variables and wildcards, where in th
+	// the case of a wildcards and variables, they all count as a match regardless of the variable name.
+	Add(path string, handler any) (bool, error)
+	// ListRoutes Lists all configured paths in the tree
+	ListRoutes() []string
+}
+
 // A node in the PathTree. Each node represents an element in the path, containing a matching value for the path tree
 // an object associated to the node (which makes it a terminating node, i.e. a matching path, and all the down path
 // children for the current element, aggregated by type of matchers. These will are the children elements (plain
@@ -34,7 +50,7 @@ var (
 type treePathNode struct {
 	// the value of the current element. this may be a wildcard, double wildcard, a valid path segment  which should be
 	// matched exactly or a variable name, if the current node represents a variable. the type of the node is defined
-	// by the type of child that the node represents, meaning that the parent node defines what the value the the child
+	// by the type of child that the node represents, meaning that the parent node defines what the value the child
 	// node represents, depending on which category of children in the parent node the child node falls into.
 	value string
 
@@ -64,7 +80,7 @@ type treePathNode struct {
 
 // A path matching tree. it holds a single root node, not used for matching, but to categorize matches for the first
 // path element
-type PathTree struct {
+type pathTree struct {
 	// the root node
 	root *treePathNode
 }
@@ -79,8 +95,8 @@ func newTreeNode(name string) *treePathNode {
 }
 
 // Create a new path tree, initializing the dummy root node.
-func NewPathTree() *PathTree {
-	result := new(PathTree)
+func New() Tree {
+	result := new(pathTree)
 	result.root = newTreeNode("root")
 	return result
 }
@@ -133,7 +149,7 @@ func splitPath(path string) []string {
 // extract the values of any path variables if the matched path expression has path variables. Returns the handler
 // for the path as well as a map of variables having the variable names as keys and the corresponding path elements
 // as values
-func (tree *PathTree) GetHandlerAndPathVariables(path string) (interface{}, map[string]string) {
+func (tree *pathTree) Get(path string) (interface{}, map[string]string) {
 	variables := make(map[string]string)
 	parts := splitPath(path)
 
@@ -217,7 +233,7 @@ func matchPathAndVariables(node *treePathNode, parts []string, variables map[str
 	return nil
 }
 
-func (tree *PathTree) AddHandler(path string, handler interface{}) (bool, error) {
+func (tree *pathTree) Add(path string, handler interface{}) (bool, error) {
 	if !validPathExpression.MatchString(path) {
 		fmt.Println("invalid path added", path)
 		return false, errors.New("invalid Path")
@@ -257,7 +273,7 @@ func (tree *PathTree) AddHandler(path string, handler interface{}) (bool, error)
 }
 
 // Lists all the routes registered in the path tree
-func (tree *PathTree) ListRoutes() []string {
+func (tree *pathTree) ListRoutes() []string {
 	// let's build the list of registered endpoints from the root
 	return getRoutes("", tree.root)
 }

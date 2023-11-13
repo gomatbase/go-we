@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/pathTree"
 )
 
 type RequestScope interface {
@@ -116,7 +117,7 @@ type WebEngine interface {
 // A Web state structure
 type webEngine struct {
 	filters        []Filter
-	matchTrees     map[string]*PathTree
+	matchTrees     map[string]pathTree.Tree
 	sessionManager SessionManager
 	errorHandler   ErrorHandler
 }
@@ -126,12 +127,12 @@ func (wc *webEngine) Handle(path string, handler HandlerFunction) {
 }
 
 func (wc *webEngine) HandleMethod(method string, path string, handler HandlerFunction) {
-	pathTree, found := wc.matchTrees[method]
+	tree, found := wc.matchTrees[method]
 	if !found {
-		pathTree = NewPathTree()
-		wc.matchTrees[method] = pathTree
+		tree = pathTree.New()
+		wc.matchTrees[method] = tree
 	}
-	pathTree.AddHandler(path, handler)
+	tree.Add(path, handler)
 }
 
 func (wc *webEngine) AddFilter(filter Filter) {
@@ -179,10 +180,10 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// match the incoming endpoint to a registered handler
-	handler, variables := pt.GetHandlerAndPathVariables(r.URL.Path)
+	handler, variables := pt.Get(r.URL.Path)
 	if handler == nil && found {
 		pt = wc.matchTrees["ALL"]
-		handler, variables = pt.GetHandlerAndPathVariables(r.URL.Path)
+		handler, variables = pt.Get(r.URL.Path)
 	}
 
 	// We first check if the request is incoming for a handled endpoint. If not we just return 404
@@ -222,6 +223,6 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 
 func New() WebEngine {
 	return &webEngine{
-		matchTrees: map[string]*PathTree{"ALL": NewPathTree()},
+		matchTrees: map[string]pathTree.Tree{"ALL": pathTree.New()},
 	}
 }

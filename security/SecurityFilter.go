@@ -9,6 +9,7 @@ import (
 
 	"github.com/gomatbase/go-we"
 	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/pathTree"
 )
 
 // Security Filter constants
@@ -34,7 +35,7 @@ const (
 // By default, the security filter is created with an anonymous authentication provider, which accepts all requests.
 type SecurityFilter struct {
 	// Path Match tree to check for ignore paths
-	ignoreMap *we.PathTree
+	ignoreMap pathTree.Tree
 
 	// The authentication provider used to verify and trigger authentication
 	authenticationProvider *AuthenticationProvider
@@ -43,13 +44,13 @@ type SecurityFilter struct {
 // Create and initialize a new security filter
 func NewSecurityFilter() *SecurityFilter {
 	result := new(SecurityFilter)
-	result.ignoreMap = we.NewPathTree()
+	result.ignoreMap = pathTree.New()
 	return result
 }
 
 // Adds a path to the ignore list
 func (sf *SecurityFilter) Ignore(path string) {
-	sf.ignoreMap.AddHandler(path, IGNORE_PATH_PEG)
+	sf.ignoreMap.Add(path, IGNORE_PATH_PEG)
 }
 
 // Sets the authentication provider that should be used to handle authentication life-cycle
@@ -71,7 +72,7 @@ func (sf *SecurityFilter) SetAuthenticationProvider(provider AuthenticationProvi
 // redirection response to an authentication url (for login form authentication providers as well as some flavours of
 // oauth2)
 func (sf *SecurityFilter) Filter(headers http.Header, scope we.RequestScope) error {
-	if peg, _ := sf.ignoreMap.GetHandlerAndPathVariables(scope.Request().URL.Path); peg == nil {
+	if peg, _ := sf.ignoreMap.Get(scope.Request().URL.Path); peg == nil {
 		if (*sf.authenticationProvider).IsAuthorized(scope) {
 			// the authorization provider considers the request authorized.
 			return nil
