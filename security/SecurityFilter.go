@@ -2,10 +2,13 @@
 // Since 27/02/2020 By GOM
 // Licensed under MIT License
 
-package we
+package security
 
 import (
 	"net/http"
+
+	"github.com/gomatbase/go-we"
+	"github.com/gomatbase/go-we/errors"
 )
 
 // Security Filter constants
@@ -31,7 +34,7 @@ const (
 // By default, the security filter is created with an anonymous authentication provider, which accepts all requests.
 type SecurityFilter struct {
 	// Path Match tree to check for ignore paths
-	ignoreMap *pathTree
+	ignoreMap *we.PathTree
 
 	// The authentication provider used to verify and trigger authentication
 	authenticationProvider *AuthenticationProvider
@@ -40,13 +43,13 @@ type SecurityFilter struct {
 // Create and initialize a new security filter
 func NewSecurityFilter() *SecurityFilter {
 	result := new(SecurityFilter)
-	result.ignoreMap = newPathTree()
+	result.ignoreMap = we.NewPathTree()
 	return result
 }
 
 // Adds a path to the ignore list
 func (sf *SecurityFilter) Ignore(path string) {
-	sf.ignoreMap.addHandler(path, IGNORE_PATH_PEG)
+	sf.ignoreMap.AddHandler(path, IGNORE_PATH_PEG)
 }
 
 // Sets the authentication provider that should be used to handle authentication life-cycle
@@ -67,19 +70,18 @@ func (sf *SecurityFilter) SetAuthenticationProvider(provider AuthenticationProvi
 // so that they are properly authenticated. Depending on the type of authenticated provider, it may result in a
 // redirection response to an authentication url (for login form authentication providers as well as some flavours of
 // oauth2)
-func (sf *SecurityFilter) Filter(w http.ResponseWriter, scope RequestScope) (bool, error) {
-	if peg, _ := sf.ignoreMap.getHandlerAndPathVariables(scope.Request().URL.Path); peg == nil {
+func (sf *SecurityFilter) Filter(headers http.Header, scope we.RequestScope) error {
+	if peg, _ := sf.ignoreMap.GetHandlerAndPathVariables(scope.Request().URL.Path); peg == nil {
 		if (*sf.authenticationProvider).IsAuthorized(scope) {
 			// the authorization provider considers the request authorized.
-			return true, nil
+			return nil
 		}
 
 		// not authorized, let's handle the authorization
-		if !(*sf.authenticationProvider).HandleAuthentication(w, scope) {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		if !(*sf.authenticationProvider).HandleAuthentication(headers, scope) {
+			return errors.UnauthorizedError
 		}
-		return false, nil
 	}
 
-	return true, nil
+	return nil
 }

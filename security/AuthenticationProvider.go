@@ -2,10 +2,12 @@
 // Since 27/02/2020 By GOM
 // Licensed under MIT License
 
-package we
+package security
 
 import (
 	"net/http"
+
+	"github.com/gomatbase/go-we"
 )
 
 const (
@@ -17,8 +19,8 @@ const (
 
 type AuthenticationProvider interface {
 	GetType() uint32
-	IsAuthorized(scope RequestScope) bool
-	HandleAuthentication(w http.ResponseWriter, scope RequestScope) bool
+	IsAuthorized(scope we.RequestScope) bool
+	HandleAuthentication(headers http.Header, scope we.RequestScope) bool
 }
 
 type OAuth2AuthenticationProvider interface {
