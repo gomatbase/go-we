@@ -5,6 +5,8 @@
 package we
 
 import (
+	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -217,16 +219,17 @@ func matchPathAndVariables(node *treePathNode, parts []string, variables map[str
 
 func (tree *pathTree) addHandler(path string, handler interface{}) (bool, error) {
 	if !validPathExpression.MatchString(path) {
-		return false, newWebEngineError("Invalid Path")
+		fmt.Println("invalid path added", path)
+		return false, errors.New("invalid Path")
 	}
 
 	parts := splitPath(path)
 
-	// let's get the closest matching endpoint
+	// let's get the closest matchng endpoint
 	insertionPoint, index, found := matchSignature(tree.root, parts, 0)
 	if found {
 		// found a conflicting signature, error and do nothing
-		return false, newWebEngineError("Path conflict with existing path handler")
+		return false, errors.New("path conflict with existing path handler")
 	}
 
 	// we now insert one leaf of the matching tree for each part which was not already found in the tree
