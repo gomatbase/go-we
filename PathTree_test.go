@@ -11,7 +11,7 @@ import (
 
 // Tests for PathTree endpoint adding.
 func TestAddRoutes(t *testing.T) {
-	pathTree := newPathTree()
+	pathTree := NewPathTree()
 
 	// let's list the routes and ensure that is empty
 	t.Run("Test PathTree Initialization", func(t *testing.T) {
@@ -21,7 +21,7 @@ func TestAddRoutes(t *testing.T) {
 	})
 
 	t.Run("Test empty handler", func(t *testing.T) {
-		if handler, _ := pathTree.getHandlerAndPathVariables("/"); handler != nil {
+		if handler, _ := pathTree.GetHandlerAndPathVariables("/"); handler != nil {
 			t.Error("Non-Empty root handler")
 		}
 	})
@@ -29,10 +29,10 @@ func TestAddRoutes(t *testing.T) {
 	t.Run("Test adding a root handler", func(t *testing.T) {
 		handler := new(any)
 		log.Println("handler is", handler)
-		if success, e := pathTree.addHandler("/", handler); !success {
+		if success, e := pathTree.AddHandler("/", handler); !success {
 			t.Error("Not able to add Handler", e)
 		} else {
-			registeredHandler, variables := pathTree.getHandlerAndPathVariables("/")
+			registeredHandler, variables := pathTree.GetHandlerAndPathVariables("/")
 			if registeredHandler == nil {
 				t.Error("Unexpected null handler for root")
 			} else {
@@ -44,7 +44,7 @@ func TestAddRoutes(t *testing.T) {
 			}
 		}
 
-		registeredHandler, _ := pathTree.getHandlerAndPathVariables("/something")
+		registeredHandler, _ := pathTree.GetHandlerAndPathVariables("/something")
 		if registeredHandler != nil {
 			t.Error("Unexpectedly matched a handler for /something")
 		}
@@ -52,10 +52,10 @@ func TestAddRoutes(t *testing.T) {
 
 	t.Run("Test overloading a root handler", func(t *testing.T) {
 		handler := new(any)
-		if success, _ := pathTree.addHandler("/", handler); success {
+		if success, _ := pathTree.AddHandler("/", handler); success {
 			t.Error("Was able to  overload root handler")
 		}
-		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/")
+		registeredHandler, variables := pathTree.GetHandlerAndPathVariables("/")
 		if registeredHandler == nil {
 			t.Error("Unexpected null handler for root")
 		} else {
@@ -70,17 +70,17 @@ func TestAddRoutes(t *testing.T) {
 	t.Run("Test adding a static handler", func(t *testing.T) {
 		handler := new(any)
 
-		if success, e := pathTree.addHandler("/something/somethingelse", &handler); !success {
+		if success, e := pathTree.AddHandler("/something/somethingelse", &handler); !success {
 			t.Error("Not able to add Handler", e)
 		}
-		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/something/somethingelse")
+		registeredHandler, variables := pathTree.GetHandlerAndPathVariables("/something/somethingelse")
 		if registeredHandler != &handler {
 			t.Error("Unexpected registered handler for /something/somethingelse", registeredHandler)
 		} else if len(variables) > 0 {
 			t.Error("Unexpected Path Variables found in endpoint", variables)
 		}
 
-		registeredHandler, _ = pathTree.getHandlerAndPathVariables("/something")
+		registeredHandler, _ = pathTree.GetHandlerAndPathVariables("/something")
 		if registeredHandler != nil {
 			t.Error("Unexpected registered handler for /something", registeredHandler)
 		}
@@ -90,12 +90,12 @@ func TestAddRoutes(t *testing.T) {
 	t.Run("Test adding a variable handler", func(t *testing.T) {
 		handler := new(any)
 
-		if success, e := pathTree.addHandler("/something/{somethingelse}", &handler); !success {
+		if success, e := pathTree.AddHandler("/something/{somethingelse}", &handler); !success {
 			t.Error("Not able to add Handler", e)
 		}
 
 		// the static handler should take precendence
-		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/something/somethingelse")
+		registeredHandler, variables := pathTree.GetHandlerAndPathVariables("/something/somethingelse")
 		if registeredHandler == &handler {
 			t.Error("Unexpected registered handler for /something/somethingelse", registeredHandler)
 		} else if len(variables) > 0 {
@@ -103,14 +103,14 @@ func TestAddRoutes(t *testing.T) {
 		}
 
 		// should default to the variable handler
-		registeredHandler, variables = pathTree.getHandlerAndPathVariables("/something/something")
+		registeredHandler, variables = pathTree.GetHandlerAndPathVariables("/something/something")
 		if registeredHandler != &handler {
 			t.Error("Unexpected registered handler for /something/something", registeredHandler)
 		} else if variables["somethingelse"] != "something" {
 			t.Error("Unexpected Path Variables found in endpoint", variables)
 		}
 
-		registeredHandler, _ = pathTree.getHandlerAndPathVariables("/something")
+		registeredHandler, _ = pathTree.GetHandlerAndPathVariables("/something")
 		if registeredHandler != nil {
 			t.Error("Unexpected registered handler for root", registeredHandler)
 		}
@@ -120,22 +120,22 @@ func TestAddRoutes(t *testing.T) {
 		handler1 := new(any)
 		handler2 := new(any)
 
-		if success, e := pathTree.addHandler("/something/somethingelse/uno", &handler1); !success {
+		if success, e := pathTree.AddHandler("/something/somethingelse/uno", &handler1); !success {
 			t.Error("Not able to add Handler", e)
 		}
 
-		if success, e := pathTree.addHandler("/something/somethingelse/dos", &handler2); !success {
+		if success, e := pathTree.AddHandler("/something/somethingelse/dos", &handler2); !success {
 			t.Error("Not able to add Handler", e)
 		}
 
-		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/something/somethingelse/uno")
+		registeredHandler, variables := pathTree.GetHandlerAndPathVariables("/something/somethingelse/uno")
 		if registeredHandler != &handler1 {
 			t.Error("Unexpected registered handler for /something/somethingelse/uno", registeredHandler)
 		} else if len(variables) > 0 {
 			t.Error("Unexpected Path Variables found in endpoint", variables)
 		}
 
-		registeredHandler, variables = pathTree.getHandlerAndPathVariables("/something/somethingelse/dos")
+		registeredHandler, variables = pathTree.GetHandlerAndPathVariables("/something/somethingelse/dos")
 		if registeredHandler != &handler2 {
 			t.Error("Unexpected registered handler for /something/somethingelse/dos", registeredHandler)
 		} else if len(variables) > 0 {
@@ -147,22 +147,22 @@ func TestAddRoutes(t *testing.T) {
 		handler1 := new(any)
 		handler2 := new(any)
 
-		if success, e := pathTree.addHandler("/somethingwithvars/{somethingelse}/uno", &handler1); !success {
+		if success, e := pathTree.AddHandler("/somethingwithvars/{somethingelse}/uno", &handler1); !success {
 			t.Error("Not able to add Handler", e)
 		}
 
-		if success, e := pathTree.addHandler("/somethingwithvars/{somethingelse}/dos", &handler2); !success {
+		if success, e := pathTree.AddHandler("/somethingwithvars/{somethingelse}/dos", &handler2); !success {
 			t.Error("Not able to add Handler", e)
 		}
 
-		registeredHandler, variables := pathTree.getHandlerAndPathVariables("/somethingwithvars/somethingelse/uno")
+		registeredHandler, variables := pathTree.GetHandlerAndPathVariables("/somethingwithvars/somethingelse/uno")
 		if registeredHandler != &handler1 {
 			t.Error("Unexpected registered handler for /somethingwithvars/{somethingelse}/uno", registeredHandler)
 		} else if len(variables) != 1 {
 			t.Error("Unexpected Path Variables found in endpoint", variables)
 		}
 
-		registeredHandler, variables = pathTree.getHandlerAndPathVariables("/somethingwithvars/somethingelse/dos")
+		registeredHandler, variables = pathTree.GetHandlerAndPathVariables("/somethingwithvars/somethingelse/dos")
 		if registeredHandler != &handler2 {
 			t.Error("Unexpected registered handler for /somethingwithvars/{somethingelse}/dos", registeredHandler)
 		} else if len(variables) != 1 {

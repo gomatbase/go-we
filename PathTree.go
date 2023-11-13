@@ -26,7 +26,7 @@ var (
 	validPathExpression = regexp.MustCompile("^(/|(/(([a-zA-Z0-9_.\\-@~]|%[0-9a-fA-f]{2})+|{[a-zA-Z0-9]+}|\\*\\*?))*/?)$")
 )
 
-// A node in the pathTree. Each node represents an element in the path, containing a matching value for the path tree
+// A node in the PathTree. Each node represents an element in the path, containing a matching value for the path tree
 // an object associated to the node (which makes it a terminating node, i.e. a matching path, and all the down path
 // children for the current element, aggregated by type of matchers. These will are the children elements (plain
 // path elements), variables (elements representing variables), if there is any child wildcard (any path element may
@@ -64,7 +64,7 @@ type treePathNode struct {
 
 // A path matching tree. it holds a single root node, not used for matching, but to categorize matches for the first
 // path element
-type pathTree struct {
+type PathTree struct {
 	// the root node
 	root *treePathNode
 }
@@ -79,8 +79,8 @@ func newTreeNode(name string) *treePathNode {
 }
 
 // Create a new path tree, initializing the dummy root node.
-func newPathTree() *pathTree {
-	result := new(pathTree)
+func NewPathTree() *PathTree {
+	result := new(PathTree)
 	result.root = newTreeNode("root")
 	return result
 }
@@ -133,7 +133,7 @@ func splitPath(path string) []string {
 // extract the values of any path variables if the matched path expression has path variables. Returns the handler
 // for the path as well as a map of variables having the variable names as keys and the corresponding path elements
 // as values
-func (tree *pathTree) getHandlerAndPathVariables(path string) (interface{}, map[string]string) {
+func (tree *PathTree) GetHandlerAndPathVariables(path string) (interface{}, map[string]string) {
 	variables := make(map[string]string)
 	parts := splitPath(path)
 
@@ -217,7 +217,7 @@ func matchPathAndVariables(node *treePathNode, parts []string, variables map[str
 	return nil
 }
 
-func (tree *pathTree) addHandler(path string, handler interface{}) (bool, error) {
+func (tree *PathTree) AddHandler(path string, handler interface{}) (bool, error) {
 	if !validPathExpression.MatchString(path) {
 		fmt.Println("invalid path added", path)
 		return false, errors.New("invalid Path")
@@ -257,7 +257,7 @@ func (tree *pathTree) addHandler(path string, handler interface{}) (bool, error)
 }
 
 // Lists all the routes registered in the path tree
-func (tree *pathTree) ListRoutes() []string {
+func (tree *PathTree) ListRoutes() []string {
 	// let's build the list of registered endpoints from the root
 	return getRoutes("", tree.root)
 }
