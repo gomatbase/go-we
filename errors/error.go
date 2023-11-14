@@ -12,7 +12,11 @@ type WeError interface {
 	Is(err error) bool
 }
 
-func New(statusCode int, message string, payload any) WeError {
+func New(statusCode int, message string) WeError {
+	return NewPayload(statusCode, message, nil)
+}
+
+func NewPayload(statusCode int, message string, payload any) WeError {
 	return &weError{
 		statusCode: statusCode,
 		message:    message,
@@ -50,8 +54,8 @@ func (wee *weError) Is(err error) bool {
 	if wee == err {
 		return true
 	}
-	if err, ok := err.(WeError); ok {
-		return wee.statusCode == err.StatusCode() && wee.message == err.Error()
+	if weerr, ok := err.(*weError); ok {
+		return wee.statusCode == weerr.StatusCode() && wee.message == weerr.message
 	}
 	return false
 }
