@@ -9,6 +9,7 @@ type WeError interface {
 	StatusCode() int
 	Payload() any
 	WithPayload(any) WeError
+	Is(err error) bool
 }
 
 func New(statusCode int, message string, payload any) WeError {
@@ -43,4 +44,14 @@ func (wee *weError) WithPayload(payload any) WeError {
 		message:    wee.message,
 		payload:    payload,
 	}
+}
+
+func (wee *weError) Is(err error) bool {
+	if wee == err {
+		return true
+	}
+	if err, ok := err.(WeError); ok {
+		return wee.statusCode == err.StatusCode() && wee.message == err.Error()
+	}
+	return false
 }
