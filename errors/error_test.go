@@ -10,7 +10,7 @@ import (
 )
 
 func TestWeError_Payload(t *testing.T) {
-	err := NewPayload(500, "test", "something")
+	err := NewPayload(500, "test", &Payload{"text/plain", "something"})
 	if err.Payload() != "something" {
 		t.Errorf("Error payload not set correctly. Expected \"something\", got \"%s\"", err.Payload())
 	}
@@ -21,18 +21,18 @@ func TestWeError_Payload(t *testing.T) {
 }
 
 func TestWeError_Error(t *testing.T) {
-	err := NewPayload(500, "test", "something")
+	err := NewPayload(500, "test", &Payload{"text/plain", "something"})
 	if err.Error() != "500: test" {
 		t.Errorf("Error message not set correctly. Expected \"500: test\", got %s", err.Error())
 	}
 }
 
 func TestWeError_WithPayload(t *testing.T) {
-	err := NewPayload(500, "test", "something")
+	err := NewPayload(500, "test", &Payload{"text/plain", "something"})
 	if err.Payload() != "something" {
 		t.Errorf("Error payload not set correctly. Expected \"something\", got \"%s\"", err.Payload())
 	}
-	err2 := err.WithPayload("something else")
+	err2 := err.WithPayload("text/plain", "something else")
 	if err2.Payload() != "something else" {
 		t.Errorf("Error payload not set correctly. Expected \"something else\", got \"%s\"", err2.Payload())
 	}
@@ -60,7 +60,7 @@ func TestWeError_Is(t *testing.T) {
 	if !err.Is(err2) {
 		t.Errorf("Identical errors identified as different. %s vs %s", err.Error(), err2.Error())
 	}
-	err2 = NewPayload(500, "test", "something")
+	err2 = NewPayload(500, "test", &Payload{"text/plain", "something"})
 	if !err.Is(err2) {
 		t.Errorf("Identical errors identified as different. %s vs %s", err.Error(), err2.Error())
 	}
@@ -76,7 +76,7 @@ func TestWeError_Is(t *testing.T) {
 	if err.Is(err2) {
 		t.Errorf("Non-Identical errors identified as identical. %s vs %s", err.Error(), err2.Error())
 	}
-	err2 = err.WithPayload("something")
+	err2 = err.WithPayload("text/plain", "something")
 	if !err.Is(err2) {
 		t.Errorf("Identical errors identified as different. %s vs %s", err.Error(), err2.Error())
 	}

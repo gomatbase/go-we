@@ -17,11 +17,11 @@ type WeError interface {
 	StatusCode() int
 	// Payload returns the payload carried by the error. Payloads have data that may be used when producing a response
 	Payload() any
-	// WithPayload returns a new identical error with the given payload
-	WithPayload(any) WeError
+	// WithPayload returns a new identical error with a payload of the given content type and content
+	WithPayload(string, any) WeError
 	// Is checks if the given error is identical to this one. Two errors are considered identical if they have exactly
 	// the same status code and message, disregarding the payload
-	Is(err error) bool
+	Is(error) bool
 }
 
 // New creates a new we error with the given status code and message and no payload
@@ -30,7 +30,7 @@ func New(statusCode int, message string) WeError {
 }
 
 // NewPayload creates a new we error with the given status code, message and payload
-func NewPayload(statusCode int, message string, payload any) WeError {
+func NewPayload(statusCode int, message string, payload *Payload) WeError {
 	return &weError{
 		statusCode: statusCode,
 		message:    message,
@@ -42,7 +42,12 @@ func NewPayload(statusCode int, message string, payload any) WeError {
 type weError struct {
 	statusCode int
 	message    string
-	payload    any
+	payload    *Payload
+}
+
+type Payload struct {
+	ContentTypeHint string
+	Content         any
 }
 
 func (wee *weError) Error() string {
@@ -57,11 +62,14 @@ func (wee *weError) Payload() any {
 	return wee.payload
 }
 
-func (wee *weError) WithPayload(payload any) WeError {
+func (wee *weError) WithPayload(contentTypeHint string, content any) WeError {
 	return &weError{
 		statusCode: wee.statusCode,
 		message:    wee.message,
-		payload:    payload,
+		payload: &Payload{
+			ContentTypeHint: contentTypeHint,
+			Content:         content,
+		},
 	}
 }
 
