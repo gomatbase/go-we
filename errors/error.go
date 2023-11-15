@@ -4,6 +4,10 @@
 
 package errors
 
+import (
+	"fmt"
+)
+
 // WeError we error interface to be used as errors as well as flow control events. It always associates the error with
 // the expected response status code associated to the event/error
 type WeError interface {
@@ -42,7 +46,7 @@ type weError struct {
 }
 
 func (wee *weError) Error() string {
-	return wee.message
+	return fmt.Sprintf("%d: %s", wee.statusCode, wee.message)
 }
 
 func (wee *weError) StatusCode() int {

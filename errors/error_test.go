@@ -5,6 +5,7 @@
 package errors
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -53,6 +54,9 @@ func TestWeError_StatusCode(t *testing.T) {
 func TestWeError_Is(t *testing.T) {
 	err := New(500, "test")
 	err2 := New(500, "test")
+	if !err.Is(err) {
+		t.Error("Same error noot recognized as Identical")
+	}
 	if !err.Is(err2) {
 		t.Errorf("Identical errors identified as different. %s vs %s", err.Error(), err2.Error())
 	}
@@ -75,5 +79,8 @@ func TestWeError_Is(t *testing.T) {
 	err2 = err.WithPayload("something")
 	if !err.Is(err2) {
 		t.Errorf("Identical errors identified as different. %s vs %s", err.Error(), err2.Error())
+	}
+	if err.Is(errors.New(err.Error())) {
+		t.Error("Non we error identified as identical")
 	}
 }
