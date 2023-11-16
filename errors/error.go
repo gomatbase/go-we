@@ -16,7 +16,7 @@ type WeError interface {
 	// StatusCode returns the status code associated to the error
 	StatusCode() int
 	// Payload returns the payload carried by the error. Payloads have data that may be used when producing a response
-	Payload() any
+	Payload() *Payload
 	// WithPayload returns a new identical error with a payload of the given content type and content
 	WithPayload(string, any) WeError
 	// Is checks if the given error is identical to this one. Two errors are considered identical if they have exactly
@@ -58,7 +58,7 @@ func (wee *weError) StatusCode() int {
 	return wee.statusCode
 }
 
-func (wee *weError) Payload() any {
+func (wee *weError) Payload() *Payload {
 	return wee.payload
 }
 

@@ -11,7 +11,7 @@ import (
 
 func TestWeError_Payload(t *testing.T) {
 	err := NewPayload(500, "test", &Payload{"text/plain", "something"})
-	if err.Payload() != "something" {
+	if err.Payload().Content != "something" {
 		t.Errorf("Error payload not set correctly. Expected \"something\", got \"%s\"", err.Payload())
 	}
 	err = New(500, "test")
@@ -29,14 +29,14 @@ func TestWeError_Error(t *testing.T) {
 
 func TestWeError_WithPayload(t *testing.T) {
 	err := NewPayload(500, "test", &Payload{"text/plain", "something"})
-	if err.Payload() != "something" {
+	if err.Payload().Content != "something" {
 		t.Errorf("Error payload not set correctly. Expected \"something\", got \"%s\"", err.Payload())
 	}
 	err2 := err.WithPayload("text/plain", "something else")
-	if err2.Payload() != "something else" {
+	if err2.Payload().Content != "something else" {
 		t.Errorf("Error payload not set correctly. Expected \"something else\", got \"%s\"", err2.Payload())
 	}
-	if err.Payload() != "something" {
+	if err.Payload().Content != "something" {
 		t.Errorf("Original error payload changed when generating a new error. Expected \"something\", got \"%s\"", err.Payload())
 	}
 	if err == err2 {
