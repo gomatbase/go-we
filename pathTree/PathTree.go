@@ -30,14 +30,14 @@ var (
 // a full path, while nodes with no values (just the key which is a path component) mark an intermediate node in the tree.
 // Leaves always have a value. Path components may be names, variables or wildcards, and when matching path routes in
 // the tree, the order of precedence when matching path node is name, variable, single wildcard and double wildcard.
-type Tree interface {
+type Tree[T any] interface {
 	// Get returns the closest matching value to a given path as well as a map of any identified
 	// variables when matching the path, if any.
-	Get(path string) (any, map[string]string)
+	Get(path string) (T, map[string]string)
 	// Add adds a value to the given path. May return an error if the path will match an exact existing path
 	// with the same specificity, i.e., having exactly the same sequence of names, variables and wildcards, where in th
 	// the case of a wildcards and variables, they all count as a match regardless of the variable name.
-	Add(path string, handler any) (bool, error)
+	Add(path string, handler T) (bool, error)
 	// ListRoutes Lists all configured paths in the tree
 	ListRoutes() []string
 }
@@ -47,7 +47,7 @@ type Tree interface {
 // children for the current element, aggregated by type of matchers. These will are the children elements (plain
 // path elements), variables (elements representing variables), if there is any child wildcard (any path element may
 // match it) or double wildcard children (any combination of path elements will match it.
-type treePathNode struct {
+type treePathNode[T any] struct {
 	// the value of the current element. this may be a wildcard, double wildcard, a valid path segment  which should be
 	// matched exactly or a variable name, if the current node represents a variable. the type of the node is defined
 	// by the type of child that the node represents, meaning that the parent node defines what the value the child
@@ -63,41 +63,41 @@ type treePathNode struct {
 	// The handler for this node. If present it tags the current node as a terminating node, meaning that a match ending
 	// in this node is a successful match. If not present, a match ending in this node is not successful, and hence,
 	// not matched.
-	handler interface{}
+	handler *T
 
 	// Any simple child path elements that may have matches further down
-	children []*treePathNode
+	children []*treePathNode[T]
 
 	// Any variable child path elements to match further down the path
-	variables []*treePathNode
+	variables []*treePathNode[T]
 
 	// A single wildcard child. If present, it allows matching further down any single child element
-	wildCard *treePathNode
+	wildCard *treePathNode[T]
 
 	// A double wildcard child. If present, it allows matching any number of of child path elements.
-	doubleWildcard *treePathNode
+	doubleWildcard *treePathNode[T]
 }
 
 // A path matching tree. it holds a single root node, not used for matching, but to categorize matches for the first
 // path element
-type pathTree struct {
+type pathTree[T any] struct {
 	// the root node
-	root *treePathNode
+	root *treePathNode[T]
 }
 
 // Create a new path tree node, initialized with a value and no children
-func newTreeNode(name string) *treePathNode {
-	result := new(treePathNode)
+func newTreeNode[T any](name string) *treePathNode[T] {
+	result := new(treePathNode[T])
 	result.value = name
-	result.children = make([]*treePathNode, 0)
-	result.variables = make([]*treePathNode, 0)
+	result.children = make([]*treePathNode[T], 0)
+	result.variables = make([]*treePathNode[T], 0)
 	return result
 }
 
 // Create a new path tree, initializing the dummy root node.
-func New() Tree {
-	result := new(pathTree)
-	result.root = newTreeNode("root")
+func New[T any]() Tree[T] {
+	result := new(pathTree[T])
+	result.root = newTreeNode[T]("root")
 	return result
 }
 
@@ -149,15 +149,15 @@ func splitPath(path string) []string {
 // extract the values of any path variables if the matched path expression has path variables. Returns the handler
 // for the path as well as a map of variables having the variable names as keys and the corresponding path elements
 // as values
-func (tree *pathTree) Get(path string) (interface{}, map[string]string) {
-	variables := make(map[string]string)
+func (tree *pathTree[T]) Get(path string) (handler T, variables map[string]string) {
+	variables = make(map[string]string)
 	parts := splitPath(path)
 
 	if node := matchPathAndVariables(tree.root, parts, variables); node != nil {
-		return node.handler, variables
+		handler = *node.handler
 	}
 
-	return nil, variables
+	return
 }
 
 // Recursive function that will drill down the tree branches and tries to find the longest matching path for the given
@@ -166,7 +166,7 @@ func (tree *pathTree) Get(path string) (interface{}, map[string]string) {
 // the double wildcard child. The first full match will be considered the matching path. The child drill down order
 // effectively results in first matching for exact path matches, then for paths containing path variables, then with
 // wildcards and finally with double wildcards.
-func matchPathAndVariables(node *treePathNode, parts []string, variables map[string]string) *treePathNode {
+func matchPathAndVariables[T any](node *treePathNode[T], parts []string, variables map[string]string) *treePathNode[T] {
 
 	// there are no more parts in the path, we return the current node if it has a handler
 	if len(parts) == 0 {
@@ -180,7 +180,7 @@ func matchPathAndVariables(node *treePathNode, parts []string, variables map[str
 
 	// for each child, we check if there is an exact match
 	// log.Println(parts[0])
-	var currentMatch *treePathNode
+	var currentMatch *treePathNode[T]
 	remainingParts := parts[1:]
 	for _, child := range node.children {
 		if parts[0] == child.value {
@@ -233,7 +233,7 @@ func matchPathAndVariables(node *treePathNode, parts []string, variables map[str
 	return nil
 }
 
-func (tree *pathTree) Add(path string, handler interface{}) (bool, error) {
+func (tree *pathTree[T]) Add(path string, handler T) (bool, error) {
 	if !validPathExpression.MatchString(path) {
 		fmt.Println("invalid path added", path)
 		return false, errors.New("invalid Path")
@@ -251,7 +251,7 @@ func (tree *pathTree) Add(path string, handler interface{}) (bool, error) {
 	// we now insert one leaf of the matching tree for each part which was not already found in the tree
 	for _, part := range parts[index:] {
 		name, partType := stripPart(part)
-		child := newTreeNode(name)
+		child := newTreeNode[T](name)
 		switch partType {
 		case VALUE:
 			insertionPoint.children = append(insertionPoint.children, child)
@@ -267,13 +267,13 @@ func (tree *pathTree) Add(path string, handler interface{}) (bool, error) {
 	}
 
 	// And finally add the handler at the tip of the branch
-	insertionPoint.handler = handler
+	insertionPoint.handler = &handler
 
 	return true, nil
 }
 
 // Lists all the routes registered in the path tree
-func (tree *pathTree) ListRoutes() []string {
+func (tree *pathTree[T]) ListRoutes() []string {
 	// let's build the list of registered endpoints from the root
 	return getRoutes("", tree.root)
 }
@@ -281,7 +281,7 @@ func (tree *pathTree) ListRoutes() []string {
 // Recursive function that will drill down depth-first tree branches and return the registered endpoint paths from
 // the current branch. The function is called with the full sub-path of all the parent nodes, which act as prefix for
 // all sub-paths found in the current node
-func getRoutes(prefix string, node *treePathNode) []string {
+func getRoutes[T any](prefix string, node *treePathNode[T]) []string {
 	var listOfRoutes []string
 
 	// path variable nodes are identified by the flag and returned with curly brackets to make them identifiable
@@ -318,7 +318,7 @@ func getRoutes(prefix string, node *treePathNode) []string {
 }
 
 // recursive function to check a match for a path signature through any of the branches
-func matchSignature(node *treePathNode, parts []string, depth int) (*treePathNode, int, bool) {
+func matchSignature[T any](node *treePathNode[T], parts []string, depth int) (*treePathNode[T], int, bool) {
 	// if there are no more parts, we return the current node, and consider it found if the node has a handler
 	if len(parts) == 0 {
 		// log.Println("signature not found")
@@ -327,7 +327,7 @@ func matchSignature(node *treePathNode, parts []string, depth int) (*treePathNod
 
 	// if there are parts, let's match it with the the possible types in existence
 	name, partType := stripPart(parts[0])
-	var children *[]*treePathNode
+	var children *[]*treePathNode[T]
 	if partType == VALUE {
 		children = &node.children
 		partType = PATH_PART
