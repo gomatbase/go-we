@@ -33,11 +33,11 @@ var (
 type Tree[T any] interface {
 	// Get returns the closest matching value to a given path as well as a map of any identified
 	// variables when matching the path, if any.
-	Get(path string) (T, map[string]string)
+	Get(path string) (*T, map[string]string)
 	// Add adds a value to the given path. May return an error if the path will match an exact existing path
 	// with the same specificity, i.e., having exactly the same sequence of names, variables and wildcards, where in th
 	// the case of a wildcards and variables, they all count as a match regardless of the variable name.
-	Add(path string, handler T) (bool, error)
+	Add(path string, handler T) error
 	// ListRoutes Lists all configured paths in the tree
 	ListRoutes() []string
 }
@@ -149,12 +149,12 @@ func splitPath(path string) []string {
 // extract the values of any path variables if the matched path expression has path variables. Returns the handler
 // for the path as well as a map of variables having the variable names as keys and the corresponding path elements
 // as values
-func (tree *pathTree[T]) Get(path string) (handler T, variables map[string]string) {
+func (tree *pathTree[T]) Get(path string) (handler *T, variables map[string]string) {
 	variables = make(map[string]string)
 	parts := splitPath(path)
 
 	if node := matchPathAndVariables(tree.root, parts, variables); node != nil {
-		handler = *node.handler
+		handler = node.handler
 	}
 
 	return
@@ -233,10 +233,10 @@ func matchPathAndVariables[T any](node *treePathNode[T], parts []string, variabl
 	return nil
 }
 
-func (tree *pathTree[T]) Add(path string, handler T) (bool, error) {
+func (tree *pathTree[T]) Add(path string, handler T) error {
 	if !validPathExpression.MatchString(path) {
 		fmt.Println("invalid path added", path)
-		return false, errors.New("invalid Path")
+		return errors.New("invalid Path")
 	}
 
 	parts := splitPath(path)
@@ -245,7 +245,7 @@ func (tree *pathTree[T]) Add(path string, handler T) (bool, error) {
 	insertionPoint, index, found := matchSignature(tree.root, parts, 0)
 	if found {
 		// found a conflicting signature, error and do nothing
-		return false, errors.New("path conflict with existing path handler")
+		return errors.New("path conflict with existing path handler")
 	}
 
 	// we now insert one leaf of the matching tree for each part which was not already found in the tree
@@ -269,7 +269,7 @@ func (tree *pathTree[T]) Add(path string, handler T) (bool, error) {
 	// And finally add the handler at the tip of the branch
 	insertionPoint.handler = &handler
 
-	return true, nil
+	return nil
 }
 
 // Lists all the routes registered in the path tree
