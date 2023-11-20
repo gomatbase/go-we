@@ -127,6 +127,8 @@ func MockedRequestScope(method, rawUrl string) RequestScopeMocker {
 	host := strings.Split(parsedUrl.Host, ":")[0]
 
 	return &mockedRequestScope{
+		attributes: make(map[string]any),
+		variables:  make(map[string]string),
 		request: &http.Request{
 			Method:           method,
 			URL:              parsedUrl,
