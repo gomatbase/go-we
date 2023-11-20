@@ -5,10 +5,10 @@
 package pathTree
 
 import (
-	"errors"
-	"fmt"
 	"regexp"
 	"strings"
+
+	err "github.com/gomatbase/go-error"
 )
 
 const (
@@ -17,6 +17,11 @@ const (
 	WILDCARD
 	DOUBLE_WILDCARD
 	PATH_PART
+)
+
+const (
+	InvalidPathError  = err.Error("invalid path")
+	ExistingPathError = err.Error("existing path")
 )
 
 var (
@@ -235,17 +240,16 @@ func matchPathAndVariables[T any](node *treePathNode[T], parts []string, variabl
 
 func (tree *pathTree[T]) Add(path string, handler T) error {
 	if !validPathExpression.MatchString(path) {
-		fmt.Println("invalid path added", path)
-		return errors.New("invalid Path")
+		return InvalidPathError
 	}
 
 	parts := splitPath(path)
 
-	// let's get the closest matchng endpoint
+	// let's get the closest matching endpoint
 	insertionPoint, index, found := matchSignature(tree.root, parts, 0)
 	if found {
 		// found a conflicting signature, error and do nothing
-		return errors.New("path conflict with existing path handler")
+		return ExistingPathError
 	}
 
 	// we now insert one leaf of the matching tree for each part which was not already found in the tree
