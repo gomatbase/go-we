@@ -117,7 +117,7 @@ type WebEngine interface {
 // A Web state structure
 type webEngine struct {
 	filters        []Filter
-	matchTrees     map[string]pathTree.Tree
+	matchTrees     map[string]pathTree.Tree[HandlerFunction]
 	sessionManager SessionManager
 	errorHandler   ErrorHandler
 }
@@ -129,7 +129,7 @@ func (wc *webEngine) Handle(path string, handler HandlerFunction) {
 func (wc *webEngine) HandleMethod(method string, path string, handler HandlerFunction) {
 	tree, found := wc.matchTrees[method]
 	if !found {
-		tree = pathTree.New()
+		tree = pathTree.New[HandlerFunction]()
 		wc.matchTrees[method] = tree
 	}
 	tree.Add(path, handler)
@@ -215,7 +215,7 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// All filters processed successfully, time to handle the request
-	if e = handler.(HandlerFunction)(rw, scope); e != nil {
+	if e = (*handler)(rw, scope); e != nil {
 		wc.errorHandler.HandleError(rw, e, scope)
 	}
 
@@ -223,6 +223,6 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 
 func New() WebEngine {
 	return &webEngine{
-		matchTrees: map[string]pathTree.Tree{"ALL": pathTree.New()},
+		matchTrees: map[string]pathTree.Tree[HandlerFunction]{"ALL": pathTree.New[HandlerFunction]()},
 	}
 }
