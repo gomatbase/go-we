@@ -115,8 +115,12 @@ func (m *mockedRequestScope) SetVariables(variables map[string]string) {
 }
 
 func (m *mockedRequestScope) SetBody(content []byte) {
-	m.request.ContentLength = int64(len(content))
-	m.request.Body.(*body).buffer = bytes.NewBuffer(content)
+	if content == nil {
+		m.request.Body = nil
+	} else {
+		m.request.ContentLength = int64(len(content))
+		m.request.Body.(*body).buffer = bytes.NewBuffer(content)
+	}
 }
 
 func MockedRequestScope(method, rawUrl string) RequestScopeMocker {
