@@ -10,6 +10,8 @@ import (
 	"github.com/gomatbase/go-we"
 )
 
+// AuthenticationProvider is an interface for authentication provider implementations. Authentication providers can
+// be addedto a security filter to provider users that will be added to the reqeust scope.
 type AuthenticationProvider interface {
 	// Authenticate Tries to authenticate the incoming request. Each provider should extract from the incoming request
 	// the information required to authenticate it. If none of the required attributes are present in the request, then the
@@ -23,6 +25,7 @@ type AuthenticationProvider interface {
 	// IsValid checks if the provided user is still authenticated
 	IsValid(user *User) bool
 	// Challenge returns the authentication challenge to be sent to the client with WWW-Authenticate header. It should not
-	// contain the realm, which is added by the filter
+	// contain the realm, which is added by the filter. An empty challenge means that the provider does not produce
+	// WWW-Authenticate response headers
 	Challenge() string
 }
