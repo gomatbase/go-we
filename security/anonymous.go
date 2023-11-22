@@ -31,7 +31,7 @@ func anonymousAuthenticationProvider(paths []string) *anonymousProvider {
 
 // anonymousProvider is the internal authentication provider used to identify anonymously accessible paths.
 // It's meant to be used by the security filter, always at the root level and always the first authentication provider
-// so it takes precedence to any other authentication/authorization means.
+// so that it takes precedence to any other authentication/authorization means.
 type anonymousProvider struct {
 	paths pathTree.Tree[bool]
 }
@@ -61,7 +61,7 @@ func (ap *anonymousProvider) Realm() string {
 }
 
 // IsValid implements the AuthenticationProvider interface and will always return true
-func (ap *anonymousProvider) IsValid(user *User) bool {
+func (ap *anonymousProvider) IsValid(_ *User) bool {
 	// any user is valid
 	return true
 }
