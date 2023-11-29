@@ -5,13 +5,11 @@
 package security
 
 type User struct {
-	Realm      string   `json:"realm"`
-	Id         string   `json:"id"`
-	Password   string   `json:"-"`
-	Username   string   `json:"username"`
-	Email      string   `json:"email"`
-	Scopes     []string `json:"scope"`
-	Authorized int      `json:"auth_time"`
-	Origin     string   `json:"origin"`
-	Active     bool     `json:"active"`
+	Realm    string   `json:"realm"`
+	Password string   `json:"-"`
+	Username string   `json:"username"`
+	Scopes   []string `json:"scopes"`
+	Origin   string   `json:"origin"`
+	Active   bool     `json:"active"`
+	Data     any
 }
