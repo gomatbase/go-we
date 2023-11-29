@@ -247,7 +247,7 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 		if request.Method != http.MethodGet {
 			target = lfap.defaultRedirectPath
 		}
-		return nil, errors.ForbiddenError.WithPayload("application/html", lfap.loginForm.Generate("", target))
+		return nil, errors.UnauthorizedError.WithPayload("application/html", lfap.loginForm.Generate("", target))
 	}
 
 	// authentication is not required, no user and no error
@@ -275,12 +275,12 @@ type loginFormAuthenticationProviderBuilder struct {
 }
 
 func (lfapb *loginFormAuthenticationProviderBuilder) Required(required bool) LoginFormAuthenticationProviderBuilder {
-	lfapb.provider.required = true
+	lfapb.provider.required = required
 	return lfapb
 }
 
 func (lfapb *loginFormAuthenticationProviderBuilder) RedirectToForm(redirect bool) LoginFormAuthenticationProviderBuilder {
-	lfapb.provider.redirect = true
+	lfapb.provider.redirect = redirect
 	return lfapb
 }
 

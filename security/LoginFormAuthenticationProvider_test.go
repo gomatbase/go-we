@@ -18,7 +18,7 @@ const DefaultRenderedForm = "<!DOCTYPE html><html lang=\"en\"><head>    <meta ch
 
 type dummyCredentialsProvider struct{}
 
-func (dcp *dummyCredentialsProvider) Get(username string) *security.User {
+func (dcp *dummyCredentialsProvider) Get(_ string) *security.User {
 	return security.Anonymous
 }
 
@@ -199,7 +199,7 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 			t.Errorf("Authentication is required, an authentication error is expected")
 		} else if user != nil {
 			t.Error("Unexpected user found.")
-		} else if !errors.ForbiddenError.Is(e) {
+		} else if !errors.UnauthorizedError.Is(e) {
 			t.Errorf("Expected forbidden error, got %v", e)
 		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "", "/somewhere") {
 			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/somewhere"))
@@ -215,7 +215,7 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 			t.Errorf("Authentication is required, an authentication error is expected")
 		} else if user != nil {
 			t.Error("Unexpected user found.")
-		} else if !errors.ForbiddenError.Is(e) {
+		} else if !errors.UnauthorizedError.Is(e) {
 			t.Errorf("Expected forbidden error, got %v", e)
 		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "", "/") {
 			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/"))
