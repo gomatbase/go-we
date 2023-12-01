@@ -5,6 +5,7 @@
 package we
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gomatbase/go-we/errors"
@@ -150,6 +151,7 @@ func (wc *webEngine) Listen(addr string) error {
 			weErrorCatalog: make(map[int]ErrorHandler),
 		}
 	}
+	fmt.Println("Listening on", addr)
 	return http.ListenAndServe(addr, wc.Handler())
 }
 
@@ -186,12 +188,6 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 		handler, variables = pt.Get(r.URL.Path)
 	}
 
-	// We first check if the request is incoming for a handled endpoint. If not we just return 404
-	if handler == nil {
-		wc.errorHandler.HandleError(rw, errors.NotFoundError, nil)
-		return
-	}
-
 	// request context is always created fresh for an incoming request
 	scope := &requestScope{
 		request:    r,
@@ -213,8 +209,14 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	// All filters processed successfully, time to handle the request
+
+	// We first check if the request is incoming for a handled endpoint. If not we just return 404
+	if handler == nil {
+		wc.errorHandler.HandleError(rw, errors.NotFoundError, nil)
+		return
+	}
+
 	if e = (*handler)(rw, scope); e != nil {
 		wc.errorHandler.HandleError(rw, e, scope)
 	}
