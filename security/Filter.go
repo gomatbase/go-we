@@ -80,10 +80,6 @@ func (fb *filterBuilder) build() we.Filter {
 	if fb.authorizationBuilders != nil {
 		result.authorizations = pathTree.New[authorizationRules]()
 		for _, builder := range fb.authorizationBuilders {
-			if builder.authorization != nil && (len(result.authenticationProviders) == 0 || result.authenticationProviders[0].Realm() == "anonymous" && len(result.authenticationProviders) == 1) && len(builder.providers) == 0 {
-				panic("adding authorizations without a means of authentication")
-			}
-
 			authorization := authorizationRules{
 				authenticationProviders: builder.providers,
 				authorization:           builder.authorization,
