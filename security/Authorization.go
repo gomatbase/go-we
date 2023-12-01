@@ -8,6 +8,12 @@ import (
 	"github.com/gomatbase/go-we"
 )
 
+type AuthorizationFunc func(*User, we.RequestScope) bool
+
+func (f AuthorizationFunc) IsAuthorized(user *User, scope we.RequestScope) bool {
+	return f(user, scope)
+}
+
 type Authorization interface {
 	IsAuthorized(*User, we.RequestScope) bool
 }
