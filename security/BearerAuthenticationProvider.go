@@ -101,3 +101,7 @@ func (bap *bearerAuthenticationProvider) IsValid(user *User) bool {
 func (bap *bearerAuthenticationProvider) Challenge() string {
 	return bap.challenge
 }
+
+func (bap *bearerAuthenticationProvider) Endpoints() []string {
+	return nil
+}

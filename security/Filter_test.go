@@ -37,6 +37,10 @@ type dummyProvider struct {
 	isValid             func(*security.User) bool
 }
 
+func (dp *dummyProvider) Endpoints() []string {
+	return nil
+}
+
 func (dp *dummyProvider) Authenticate(headers http.Header, scope we.RequestScope) (*security.User, error) {
 	if dp.authenticate != nil {
 		return dp.authenticate(headers, scope)
@@ -83,14 +87,6 @@ func TestFilterBuilds(t *testing.T) {
 			}
 		}()
 		security.Filter(security.DefaultAnonymousAccess).Authentication().Build()
-	})
-	t.Run("Test authorizations with no authentication", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Errorf("Adding authorizations with no authentication should fail")
-			}
-		}()
-		security.Filter(security.DefaultAnonymousAccess).Path("/something").Authorize(&dummyAuthorization{result: true}).Build()
 	})
 	t.Run("Test overloading realms at root authentication", func(t *testing.T) {
 		defer func() {

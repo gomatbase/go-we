@@ -28,4 +28,8 @@ type AuthenticationProvider interface {
 	// contain the realm, which is added by the filter. An empty challenge means that the provider does not produce
 	// WWW-Authenticate response headers
 	Challenge() string
+	// Endpoints are specific endpoints the authorization provider reports as being handled by the filter also, regardless
+	// if they fall under any specific path they are authenticating. Typically they will only report endpoints used
+	// in SSO or login form authenticators
+	Endpoints() []string
 }

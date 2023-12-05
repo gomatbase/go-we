@@ -68,6 +68,10 @@ func (bap *basicAuthenticationProvider) Challenge() string {
 	return "Basic"
 }
 
+func (bap *basicAuthenticationProvider) Endpoints() []string {
+	return nil
+}
+
 type basicAuthenticationProviderBuilder struct {
 	provider *basicAuthenticationProvider
 }

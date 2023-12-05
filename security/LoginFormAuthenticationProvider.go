@@ -269,6 +269,10 @@ func (lfap *loginFormAuthenticationProvider) Challenge() string {
 	return ""
 }
 
+func (lfap *loginFormAuthenticationProvider) Endpoints() []string {
+	return []string{lfap.loginPath}
+}
+
 type loginFormAuthenticationProviderBuilder struct {
 	credentialsProvider CredentialsProvider
 	provider            *loginFormAuthenticationProvider

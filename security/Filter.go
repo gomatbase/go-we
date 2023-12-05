@@ -56,6 +56,7 @@ func (fb *filterBuilder) build() we.Filter {
 
 	result := &filter{
 		globalProviders:         make(map[string]AuthenticationProvider),
+		registeredEndpoints:     pathTree.New[authorizationRules](),
 		authenticationProviders: fb.authenticationProviders,
 		restricted:              fb.restricted,
 	}
@@ -71,6 +72,13 @@ func (fb *filterBuilder) build() we.Filter {
 			}
 		} else {
 			result.globalProviders[provider.Realm()] = provider
+			for _, endpoint := range provider.Endpoints() {
+				if e := result.registeredEndpoints.Add(endpoint, authorizationRules{
+					authenticationProviders: []AuthenticationProvider{provider},
+				}); e != nil {
+					panic("Provider owned endpoint already registered")
+				}
+			}
 		}
 		if provider.Challenge() != "" {
 			result.challenges = append(result.challenges, fmt.Sprintf("%s realm=\"%s\"", provider.Challenge(), provider.Realm()))
@@ -96,6 +104,11 @@ func (fb *filterBuilder) build() we.Filter {
 					}
 				} else {
 					result.globalProviders[provider.Realm()] = provider
+					for _, endpoint := range provider.Endpoints() {
+						if e := result.registeredEndpoints.Add(endpoint, authorization); e != nil {
+							panic("Provider owned endpoint already registered")
+						}
+					}
 				}
 				if provider.Challenge() != "" {
 					authorization.challenges = append(authorization.challenges, fmt.Sprintf("%s realm=\"%s\"", provider.Challenge(), provider.Realm()))
@@ -314,6 +327,7 @@ func sendChallenges(headers http.Header, challenges []string) {
 type filter struct {
 	globalProviders         map[string]AuthenticationProvider
 	authenticationProviders []AuthenticationProvider
+	registeredEndpoints     pathTree.Tree[authorizationRules]
 	authorizations          pathTree.Tree[authorizationRules]
 	challenges              []string
 	restricted              bool
@@ -334,19 +348,32 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 	}
 
 	if user == nil {
-		// No user found, let's check if the request can be authenticated at root level
-		for _, provider := range f.authenticationProviders {
-			if authenticatedUser, e := provider.Authenticate(header, scope); e != nil {
-				return e
-			} else if authenticatedUser != nil {
-				if authenticatedUser == Anonymous {
-					// User is authenticated as an anonymous user, meaning it's accessing resources that are public
-					// it wil not be added to the request or session
-					return nil
+		// No user found
+		// let's check if there is any authentication provider registered for the requested path
+		if authorization, _ := f.registeredEndpoints.Get(scope.Request().URL.Path); authorization != nil {
+			var e error
+			if user, e = (*authorization).IsAuthorized(header, user, scope); e != nil {
+				if e == errors.UnauthorizedError {
+					sendChallenges(header, f.challenges)
 				}
-				authenticatedUser.Realm = provider.Realm()
-				user = authenticatedUser
-				break
+				return e
+			}
+		}
+		// let's check if the request can be authenticated at root level, in case there's still no user
+		if user == nil {
+			for _, provider := range f.authenticationProviders {
+				if authenticatedUser, e := provider.Authenticate(header, scope); e != nil {
+					return e
+				} else if authenticatedUser != nil {
+					if authenticatedUser == Anonymous {
+						// User is authenticated as an anonymous user, meaning it's accessing resources that are public
+						// it wil not be added to the request or session
+						return nil
+					}
+					authenticatedUser.Realm = provider.Realm()
+					user = authenticatedUser
+					break
+				}
 			}
 		}
 	}

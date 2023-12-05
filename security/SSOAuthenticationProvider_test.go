@@ -28,7 +28,7 @@ func (dacp *dummyAuthorizationCodeProvider) State(_ *http.Request) (state string
 	return dacp.state, "accessCode"
 }
 
-func (dacp *dummyAuthorizationCodeProvider) ValidateAuthorizationCode(_ string) (*security.User, error) {
+func (dacp *dummyAuthorizationCodeProvider) ValidateAuthorizationCode(_, _ string) (*security.User, error) {
 	return dacp.user, dacp.e
 }
 

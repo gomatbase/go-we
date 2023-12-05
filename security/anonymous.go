@@ -70,3 +70,8 @@ func (ap *anonymousProvider) IsValid(_ *User) bool {
 func (ap *anonymousProvider) Challenge() string {
 	return ""
 }
+
+// Endpoints implements the AuthenticationProvider interface and returns no endpoints
+func (ap *anonymousProvider) Endpoints() []string {
+	return nil
+}
