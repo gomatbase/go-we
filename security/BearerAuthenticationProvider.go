@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/gomatbase/go-we"
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 )
 
 // TokenIntrospector allows introspecting a bearer token and return a user for it.
@@ -77,7 +77,7 @@ func (bap *bearerAuthenticationProvider) Authenticate(_ http.Header, scope we.Re
 
 		token := authorization[7:]
 		if user, e := bap.tokenIntrospector.Introspect(token); e != nil || user == nil {
-			return nil, errors.UnauthorizedError
+			return nil, events.UnauthorizedError
 		} else {
 			return user, nil
 		}

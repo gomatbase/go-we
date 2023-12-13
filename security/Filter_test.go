@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/gomatbase/go-we"
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/security"
 	"github.com/gomatbase/go-we/test"
 )
@@ -210,7 +210,7 @@ func TestFilterRootAuthentication(t *testing.T) {
 		headers := make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e == nil {
 			t.Error("Unauthenticated call in restricted filter should fail")
-		} else if !e.(errors.WeError).Is(errors.UnauthorizedError) {
+		} else if !e.(events.WeEvent).Is(events.UnauthorizedError) {
 			t.Errorf("Unexpected error for unauthenticated call in restricted filter: %v", e)
 		} else if len(headers["WWW-Authenticate"]) > 0 {
 			t.Errorf("Unexpected challenge for unauthenticated call in restricted filter: %s", headers["WWW-Authenticate"][0])
@@ -222,7 +222,7 @@ func TestFilterRootAuthentication(t *testing.T) {
 		headers := make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e == nil {
 			t.Error("Unauthenticated call in restricted filter should fail")
-		} else if !e.(errors.WeError).Is(errors.UnauthorizedError) {
+		} else if !e.(events.WeEvent).Is(events.UnauthorizedError) {
 			t.Errorf("Unexpected error for unauthenticated call in restricted filter: %v", e)
 		} else if len(headers["Www-Authenticate"]) == 0 {
 			t.Error("Expected challenges for unauthenticated call")
@@ -239,7 +239,7 @@ func TestFilterRootAuthentication(t *testing.T) {
 		headers := make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e == nil {
 			t.Error("Unauthenticated call in restricted filter should fail")
-		} else if !e.(errors.WeError).Is(errors.UnauthorizedError) {
+		} else if !e.(events.WeEvent).Is(events.UnauthorizedError) {
 			t.Errorf("Unexpected error for unauthenticated call in restricted filter: %v", e)
 		} else if len(headers["Www-Authenticate"]) == 0 {
 			t.Error("Expected challenges for unauthenticated call")
@@ -266,17 +266,17 @@ func TestFilterRootAuthentication(t *testing.T) {
 		headers := make(http.Header)
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
 		scope.SetInSession(security.UserAttributeName, &security.User{Realm: "realm"})
-		if e := filter.Filter(headers, scope); e != errors.UnauthorizedError {
+		if e := filter.Filter(headers, scope); e != events.UnauthorizedError {
 			t.Errorf("Expected user to be unauthorized, instead got error: %v", e)
 		}
 	})
 	t.Run("Test failed authenticated call", func(t *testing.T) {
 		// Using a different weError to check if it's getting the provider error
-		provider := &dummyProvider{realm: "realm", authenticationError: errors.OKInterruption}
+		provider := &dummyProvider{realm: "realm", authenticationError: events.OKInterruption}
 		filter := security.Filter(security.DefaultAnonymousAccess).Authentication(provider).Build()
 		headers := make(http.Header)
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
-		if e := filter.Filter(headers, scope); e != errors.OKInterruption {
+		if e := filter.Filter(headers, scope); e != events.OKInterruption {
 			t.Errorf("Expected user to fail authentication, instead got error: %v", e)
 		}
 	})
@@ -331,7 +331,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 		headers := make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e == nil {
 			t.Error("Unauthenticated call in restricted restricted path should fail")
-		} else if !e.(errors.WeError).Is(errors.UnauthorizedError) {
+		} else if !e.(events.WeEvent).Is(events.UnauthorizedError) {
 			t.Errorf("Unexpected error for unauthenticated call in restricted filter: %v", e)
 		} else if len(headers["WWW-Authenticate"]) > 0 {
 			t.Errorf("Unexpected challenge for unauthenticated call in restricted filter: %s", headers["WWW-Authenticate"][0])
@@ -346,7 +346,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 		headers := make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e == nil {
 			t.Error("Unauthenticated call in restricted restricted path should fail")
-		} else if !e.(errors.WeError).Is(errors.UnauthorizedError) {
+		} else if !e.(events.WeEvent).Is(events.UnauthorizedError) {
 			t.Errorf("Unexpected error for unauthenticated call in restricted call: %v", e)
 		} else if len(headers["Www-Authenticate"]) == 0 {
 			t.Error("Expected challenges for unauthenticated call")
@@ -362,7 +362,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 		headers = make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e == nil {
 			t.Error("Unauthenticated call in restricted restricted path should fail")
-		} else if !e.(errors.WeError).Is(errors.UnauthorizedError) {
+		} else if !e.(events.WeEvent).Is(events.UnauthorizedError) {
 			t.Errorf("Unexpected error for unauthenticated call in restricted call: %v", e)
 		} else if len(headers["Www-Authenticate"]) == 0 {
 			t.Error("Expected challenges for unauthenticated call")
@@ -379,7 +379,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 		headers = make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e == nil {
 			t.Error("Unauthenticated call in restricted restricted path should fail")
-		} else if !e.(errors.WeError).Is(errors.UnauthorizedError) {
+		} else if !e.(events.WeEvent).Is(events.UnauthorizedError) {
 			t.Errorf("Unexpected error for unauthenticated call in restricted call: %v", e)
 		} else if len(headers["Www-Authenticate"]) != 2 {
 			t.Error("Expected 2 challenges for unauthenticated call")
@@ -403,8 +403,8 @@ func TestFilterPathAuthentication(t *testing.T) {
 	t.Run("Test session authenticated call to unauthorized path", func(t *testing.T) {
 		sessionUser := &security.User{Realm: "realm1"}
 		authenticatedUser := &security.User{Realm: "realm1"}
-		provider1 := &dummyProvider{realm: "realm1", valid: false, authenticationError: errors.OKInterruption}
-		provider2 := &dummyProvider{realm: "realm2", authenticationError: errors.BadRequestError}
+		provider1 := &dummyProvider{realm: "realm1", valid: false, authenticationError: events.OKInterruption}
+		provider2 := &dummyProvider{realm: "realm2", authenticationError: events.BadRequestError}
 		filter := security.Filter(security.DefaultAuthenticatedAccess).
 			Authentication(provider1).
 			Path("/").Authentication(provider2).Authorize(security.Realm("realm2")).
@@ -414,7 +414,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 		scope.SetInSession(security.UserAttributeName, sessionUser)
 		if e := filter.Filter(headers, scope); e == nil {
 			t.Errorf("Expected user to be authorized, instead got error: %v", e)
-		} else if e != errors.OKInterruption {
+		} else if e != events.OKInterruption {
 			t.Errorf("Expected error coming from root authentication, instead got error: %v", e)
 		} else if scope.GetFromSession(security.UserAttributeName) != nil {
 			t.Errorf("Expected session user to to be cleared, instead got: %v", scope.GetFromSession(security.UserAttributeName))
@@ -424,7 +424,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 		scope.SetInSession(security.UserAttributeName, sessionUser)
 		if e := filter.Filter(headers, scope); e == nil {
 			t.Error("Expected user to not be authorized")
-		} else if e != errors.BadRequestError {
+		} else if e != events.BadRequestError {
 			t.Errorf("Expected error coming from path authentication, instead got error: %v", e)
 		} else if scope.GetFromSession(security.UserAttributeName) != sessionUser {
 			t.Errorf("Expected session user to remain the same, instead got: %v", scope.GetFromSession(security.UserAttributeName))
@@ -446,7 +446,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
 		if e := filter.Filter(headers, scope); e == nil {
 			t.Error("Expected user to be not authorized")
-		} else if e != errors.ForbiddenError {
+		} else if e != events.ForbiddenError {
 			t.Errorf("Expected forbidden error: %v", e)
 		}
 	})
@@ -460,7 +460,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
 		if e := filter.Filter(headers, scope); e == nil {
 			t.Errorf("Expected user to be authorized, instead got error: %v", e)
-		} else if e != errors.ForbiddenError {
+		} else if e != events.ForbiddenError {
 			t.Errorf("Expected forbidden error: %v", e)
 		}
 	})
@@ -468,7 +468,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 
 func TestFilterAnonymous(t *testing.T) {
 	t.Run("Test restricted anonymous call", func(t *testing.T) {
-		provider := &dummyProvider{realm: "realm", authenticationError: errors.UnauthorizedError}
+		provider := &dummyProvider{realm: "realm", authenticationError: events.UnauthorizedError}
 		filter := security.Filter(security.DefaultAuthenticatedAccess).
 			Authentication(provider).
 			Path("/somewhere").Anonymous().
@@ -477,7 +477,7 @@ func TestFilterAnonymous(t *testing.T) {
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
 		if e := filter.Filter(headers, scope); e == nil {
 			t.Error("Expected user to be not authorized")
-		} else if e != errors.UnauthorizedError {
+		} else if e != events.UnauthorizedError {
 			t.Errorf("Expected unauthorized error: %v", e)
 		}
 		scope = test.MockedRequestScope(http.MethodGet, "http://localhost:8080/somewhere")
@@ -486,7 +486,7 @@ func TestFilterAnonymous(t *testing.T) {
 		}
 	})
 	t.Run("Test anonymous overriding", func(t *testing.T) {
-		provider := &dummyProvider{realm: "realm", authenticationError: errors.UnauthorizedError}
+		provider := &dummyProvider{realm: "realm", authenticationError: events.UnauthorizedError}
 		builder := security.Filter(security.DefaultAnonymousAccess)
 		filter := builder.
 			Path("/somewhere").Anonymous().
@@ -498,7 +498,7 @@ func TestFilterAnonymous(t *testing.T) {
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
 		if e := filter.Filter(headers, scope); e == nil {
 			t.Error("Expected user to be not authorized")
-		} else if e != errors.UnauthorizedError {
+		} else if e != events.UnauthorizedError {
 			t.Errorf("Expected unauthorized error: %v", e)
 		}
 		scope = test.MockedRequestScope(http.MethodGet, "http://localhost:8080/somewhere")
@@ -508,7 +508,7 @@ func TestFilterAnonymous(t *testing.T) {
 		scope = test.MockedRequestScope(http.MethodGet, "http://localhost:8080/somewhere/back")
 		if e := filter.Filter(headers, scope); e == nil {
 			t.Error("Expected user to be not authorized")
-		} else if e != errors.UnauthorizedError {
+		} else if e != events.UnauthorizedError {
 			t.Errorf("Expected unauthorized error: %v", e)
 		}
 		scope = test.MockedRequestScope(http.MethodGet, "http://localhost:8080/somewhere/else/out/back")

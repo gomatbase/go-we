@@ -8,7 +8,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/security"
 	"github.com/gomatbase/go-we/test"
 )
@@ -111,11 +111,11 @@ func TestBearerAuthenticationProvider_Authenticate(t *testing.T) {
 		}
 	})
 	t.Run("Test unsuccessful authentication", func(t *testing.T) {
-		introspector := &dummyIntrospector{user: &security.User{}, e: errors.New(500, "something")}
+		introspector := &dummyIntrospector{user: &security.User{}, e: events.New(500, "something")}
 		provider := security.BearerAuthenticationProvider().Introspector(introspector).Build()
 		scope := test.MockedRequestScope("GET", "https://localhost:8080/test")
 		scope.SetHeader("Authorization", "Bearer something")
-		if user, e := provider.Authenticate(nil, scope); !errors.UnauthorizedError.Is(e) {
+		if user, e := provider.Authenticate(nil, scope); !events.UnauthorizedError.Is(e) {
 			t.Errorf("Authentication failure should return UnauthorizedError: %v", e)
 		} else if user != nil {
 			t.Errorf("Authentication failure should not return a user: %v", user)

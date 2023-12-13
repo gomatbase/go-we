@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/security"
 	"github.com/gomatbase/go-we/test"
 )
@@ -147,8 +147,8 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 		scope.SetBody(payload)
 		if _, e := provider.Authenticate(headers, scope); e == nil {
 			t.Error("Expected authentication failure")
-		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "<h1>Error: Invalid login submission</h1>", "") {
-			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "<h1>Error: Invalid login submission</h1>", ""))
+		} else if string(e.(events.WeEvent).Payload().Content) != fmt.Sprintf(DefaultRenderedForm, "<h1>Error: Invalid login submission</h1>", "") {
+			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(events.WeEvent).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "<h1>Error: Invalid login submission</h1>", ""))
 		}
 	})
 	t.Run("Test invalid payload login", func(t *testing.T) {
@@ -169,10 +169,10 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 		scope.SetBody([]byte("username=test&password=tes&target=/somewhere"))
 		if _, e := provider.Authenticate(headers, scope); e == nil {
 			t.Error("Expected authentication failure")
-		} else if !errors.UnauthorizedError.Is(e) {
+		} else if !events.UnauthorizedError.Is(e) {
 			t.Errorf("Expected unauthorized error, got %v", e)
-		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "<h1>Error: invalid password</h1>", "/somewhere") {
-			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "<h1>Error: invalid password</h1>", "/somewhere"))
+		} else if string(e.(events.WeEvent).Payload().Content) != fmt.Sprintf(DefaultRenderedForm, "<h1>Error: invalid password</h1>", "/somewhere") {
+			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(events.WeEvent).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "<h1>Error: invalid password</h1>", "/somewhere"))
 		}
 	})
 	t.Run("Test invalid user", func(t *testing.T) {
@@ -183,10 +183,10 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 		scope.SetBody([]byte("username=tes&password=test&target=/somewhere"))
 		if _, e := provider.Authenticate(headers, scope); e == nil {
 			t.Error("Expected authentication failure")
-		} else if !errors.UnauthorizedError.Is(e) {
+		} else if !events.UnauthorizedError.Is(e) {
 			t.Errorf("Expected unauthorized error, got %v", e)
-		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "<h1>Error: Invalid credentials</h1>", "/somewhere") {
-			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "<h1>Error: Invalid credentials</h1>", "/somewhere"))
+		} else if string(e.(events.WeEvent).Payload().Content) != fmt.Sprintf(DefaultRenderedForm, "<h1>Error: Invalid credentials</h1>", "/somewhere") {
+			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(events.WeEvent).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "<h1>Error: Invalid credentials</h1>", "/somewhere"))
 		}
 	})
 	t.Run("Test required embedded authentication", func(t *testing.T) {
@@ -199,10 +199,10 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 			t.Errorf("Authentication is required, an authentication error is expected")
 		} else if user != nil {
 			t.Error("Unexpected user found.")
-		} else if !errors.UnauthorizedError.Is(e) {
+		} else if !events.UnauthorizedError.Is(e) {
 			t.Errorf("Expected forbidden error, got %v", e)
-		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "", "/somewhere") {
-			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/somewhere"))
+		} else if string(e.(events.WeEvent).Payload().Content) != fmt.Sprintf(DefaultRenderedForm, "", "/somewhere") {
+			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(events.WeEvent).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/somewhere"))
 		}
 	})
 	t.Run("Test required embedded non-GET authentication", func(t *testing.T) {
@@ -215,10 +215,10 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 			t.Errorf("Authentication is required, an authentication error is expected")
 		} else if user != nil {
 			t.Error("Unexpected user found.")
-		} else if !errors.UnauthorizedError.Is(e) {
+		} else if !events.UnauthorizedError.Is(e) {
 			t.Errorf("Expected forbidden error, got %v", e)
-		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "", "/") {
-			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/"))
+		} else if string(e.(events.WeEvent).Payload().Content) != fmt.Sprintf(DefaultRenderedForm, "", "/") {
+			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(events.WeEvent).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/"))
 		}
 	})
 	t.Run("Test required redirected authentication", func(t *testing.T) {
@@ -231,7 +231,7 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 			t.Errorf("Authentication is required, an authentication error is expected")
 		} else if user != nil {
 			t.Error("Unexpected user found.")
-		} else if !errors.FoundRedirect.Is(e) {
+		} else if !events.FoundRedirect.Is(e) {
 			t.Errorf("Expected forbidden error, got %v", e)
 		} else if headers.Get("Location") != "http://localhost:8080/login?target=%2Fsomewhere" {
 			t.Errorf("Expected redirection to login form with target page, instead got: %s", headers.Get("Location"))
@@ -247,7 +247,7 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 			t.Errorf("Authentication is required, an authentication error is expected")
 		} else if user != nil {
 			t.Error("Unexpected user found.")
-		} else if !errors.FoundRedirect.Is(e) {
+		} else if !events.FoundRedirect.Is(e) {
 			t.Errorf("Expected forbidden error, got %v", e)
 		} else if headers.Get("Location") != "http://localhost:8080/login" {
 			t.Errorf("Expected redirection to login form without target page, instead got: %s", headers.Get("Location"))
@@ -263,24 +263,24 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 			t.Errorf("Login form is getting requested, an interruption is expected")
 		} else if user != nil {
 			t.Error("Unexpected user found.")
-		} else if !errors.OKInterruption.Is(e) {
+		} else if !events.OKInterruption.Is(e) {
 			t.Errorf("Expected an OK interruption error, got %v", e)
-		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "", "/somewhere") {
-			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/somewhere"))
+		} else if string(e.(events.WeEvent).Payload().Content) != fmt.Sprintf(DefaultRenderedForm, "", "/somewhere") {
+			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(events.WeEvent).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/somewhere"))
 		}
 
 		scope = test.MockedRequestScope("GET", "http://localhost:8080/login")
-		if _, e := provider.Authenticate(headers, scope); !errors.OKInterruption.Is(e) {
+		if _, e := provider.Authenticate(headers, scope); !events.OKInterruption.Is(e) {
 			t.Errorf("Expected an OK interruption error, got %v", e)
-		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "", "/") {
-			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/"))
+		} else if string(e.(events.WeEvent).Payload().Content) != fmt.Sprintf(DefaultRenderedForm, "", "/") {
+			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(events.WeEvent).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/"))
 		}
 		provider = security.LoginFormAuthenticationProvider(security.User{Username: "test", Password: "test"}).
 			Required(true).RedirectToForm(true).DefaultAuthenticatedRedirectionPath("/api").Build()
-		if _, e := provider.Authenticate(headers, scope); !errors.OKInterruption.Is(e) {
+		if _, e := provider.Authenticate(headers, scope); !events.OKInterruption.Is(e) {
 			t.Errorf("Expected an OK interruption error, got %v", e)
-		} else if e.(errors.WeError).Payload().Content != fmt.Sprintf(DefaultRenderedForm, "", "/api") {
-			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(errors.WeError).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/api"))
+		} else if string(e.(events.WeEvent).Payload().Content) != fmt.Sprintf(DefaultRenderedForm, "", "/api") {
+			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(events.WeEvent).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/api"))
 		}
 	})
 	t.Run("Test non-required authentication", func(t *testing.T) {

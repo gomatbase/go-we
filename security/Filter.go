@@ -9,7 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gomatbase/go-we"
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/pathTree"
 )
 
@@ -302,16 +302,16 @@ func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scop
 		if user == nil {
 			// no authenticated user is found at all, send challenges and unauthenticated error
 			sendChallenges(headers, ar.challenges)
-			return nil, errors.UnauthorizedError
+			return nil, events.UnauthorizedError
 		}
 		// there is a root authenticate user that is forbidden
-		return user, errors.ForbiddenError
+		return user, events.ForbiddenError
 	}
 
 	if ar.authorization != nil && !ar.authorization.IsAuthorized(authorizationUser, scope) {
 		// the root authenticated user  is not authorized, and the path authenticated user is also not authorized
 		// return the root authenticated user as it should not replace the scope user
-		return user, errors.ForbiddenError
+		return user, events.ForbiddenError
 	}
 
 	// the newly authorized user is returned as it should replace any currently authenticated user in scope.
@@ -353,7 +353,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		if authorization, _ := f.registeredEndpoints.Get(scope.Request().URL.Path); authorization != nil {
 			var e error
 			if user, e = (*authorization).IsAuthorized(header, user, scope); e != nil {
-				if e == errors.UnauthorizedError {
+				if e == events.UnauthorizedError {
 					sendChallenges(header, f.challenges)
 				}
 				return e
@@ -383,7 +383,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		if authorization, _ := f.authorizations.Get(scope.Request().URL.Path); authorization != nil {
 			var e error
 			if user, e = (*authorization).IsAuthorized(header, user, scope); e != nil {
-				if e == errors.UnauthorizedError {
+				if e == events.UnauthorizedError {
 					sendChallenges(header, f.challenges)
 				}
 				return e
@@ -404,5 +404,5 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 	}
 
 	sendChallenges(header, f.challenges)
-	return errors.UnauthorizedError
+	return events.UnauthorizedError
 }

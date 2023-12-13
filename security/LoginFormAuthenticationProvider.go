@@ -16,7 +16,7 @@ import (
 	"text/template"
 
 	"github.com/gomatbase/go-we"
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 )
 
 const (
@@ -199,20 +199,20 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 			// it is... let's first quickly check if it's small enough to be a submission form, and if not, let's simply unauthorize it
 			if request.ContentLength > 1024 {
 				// such a submission would come out of another source and not from the provider, so... drop the target
-				return nil, errors.BadRequestError.WithPayload("application/html", lfap.loginForm.Generate("Invalid login submission", ""))
+				return nil, events.BadRequestError.WithPayload("application/html", []byte(lfap.loginForm.Generate("Invalid login submission", "")))
 			}
 			if e := request.ParseForm(); e != nil {
 				// target would have come from the form, and parsing the form failed, so... drop the target
-				return nil, errors.UnauthorizedError.WithPayload("application/html", lfap.loginForm.Generate(e.Error(), ""))
+				return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate(e.Error(), "")))
 			}
 			username := request.PostForm.Get(lfap.loginFormConfiguration.UsernameField)
 			password := request.PostForm.Get(lfap.loginFormConfiguration.PasswordField)
 
 			md5Sum := md5.Sum([]byte(password))
 			if user, e := lfap.credentialsProvider.Authenticate(username, base64.StdEncoding.EncodeToString(md5Sum[:])); e != nil {
-				return nil, errors.UnauthorizedError.WithPayload("application/html", lfap.loginForm.Generate(e.Error(), request.PostForm.Get(lfap.loginFormConfiguration.TargetField)))
+				return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate(e.Error(), request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
 			} else if user == nil {
-				return nil, errors.UnauthorizedError.WithPayload("application/html", lfap.loginForm.Generate("Invalid credentials", request.PostForm.Get(lfap.loginFormConfiguration.TargetField)))
+				return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate("Invalid credentials", request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
 			} else {
 				return user, nil
 			}
@@ -222,7 +222,7 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 			if len(target) == 0 {
 				target = lfap.defaultRedirectPath
 			}
-			return nil, errors.OKInterruption.WithPayload("application/html", lfap.loginForm.Generate("", target))
+			return nil, events.OKInterruption.WithPayload("application/html", []byte(lfap.loginForm.Generate("", target)))
 		}
 	}
 
@@ -239,7 +239,7 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 				headers.Add("Location", fmt.Sprintf("%s://%s%s?%s=%s", request.URL.Scheme, request.URL.Host, lfap.loginPath, lfap.loginFormConfiguration.TargetField, url.PathEscape(request.URL.Path)))
 			}
 
-			return nil, errors.FoundRedirect
+			return nil, events.FoundRedirect
 		}
 
 		// no redirect, let's return the login form
@@ -247,7 +247,7 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 		if request.Method != http.MethodGet {
 			target = lfap.defaultRedirectPath
 		}
-		return nil, errors.UnauthorizedError.WithPayload("application/html", lfap.loginForm.Generate("", target))
+		return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate("", target)))
 	}
 
 	// authentication is not required, no user and no error

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/security"
 	"github.com/gomatbase/go-we/test"
 )
@@ -121,7 +121,7 @@ func TestSSOAuthenticationProvider(t *testing.T) {
 		scope := test.MockedRequestScope("GET", "http://localhost:8080/somewhere?param=value&param=anothervalue")
 		if user, e := provider.Authenticate(headers, scope); e == nil {
 			t.Error("Authentication should have failed")
-		} else if !errors.FoundRedirect.Is(e) {
+		} else if !events.FoundRedirect.Is(e) {
 			t.Error("expected a redirection event")
 		} else if headers.Get("Location") != "https://openid.com" {
 			t.Errorf("should redirect to https://lopenid.com0 : %s", headers.Get("Location"))
@@ -149,7 +149,7 @@ func TestSSOAuthenticationProvider(t *testing.T) {
 		scope := test.MockedRequestScope("GET", "http://localhost:8080/sso/authorization?param=value&param=anothervalue")
 		if user, e := provider.Authenticate(headers, scope); e == nil {
 			t.Error("Authentication should have failed")
-		} else if !errors.FoundRedirect.Is(e) {
+		} else if !events.FoundRedirect.Is(e) {
 			t.Error("expected a redirection event")
 		} else if headers.Get("Location") != "https://openid.com" {
 			t.Errorf("should redirect to https://lopenid.com0 : %s", headers.Get("Location"))
@@ -171,14 +171,14 @@ func TestSSOAuthenticationProvider(t *testing.T) {
 
 	t.Run("Test failed authorization code check", func(t *testing.T) {
 		provider := security.SSOAuthenticationProvider().
-			AuthorizationCodeProvider(&dummyAuthorizationCodeProvider{user: &security.User{Username: "user1"}, e: errors.UnauthorizedError}).
+			AuthorizationCodeProvider(&dummyAuthorizationCodeProvider{user: &security.User{Username: "user1"}, e: events.UnauthorizedError}).
 			DefaultAuthenticatedEndpoint("/root").
 			Build()
 		headers := make(http.Header)
 		scope := test.MockedRequestScope("GET", "http://localhost:8080/sso/authorization?param=value&param=anothervalue")
 		if user, e := provider.Authenticate(headers, scope); e == nil {
 			t.Error("Authentication should have failed")
-		} else if !errors.FoundRedirect.Is(e) {
+		} else if !events.FoundRedirect.Is(e) {
 			t.Error("expected a redirection event")
 		} else if headers.Get("Location") != "https://openid.com" {
 			t.Errorf("should redirect to https://lopenid.com0 : %s", headers.Get("Location"))
@@ -205,7 +205,7 @@ func TestSSOAuthenticationProvider(t *testing.T) {
 		scope := test.MockedRequestScope("GET", "http://localhost:8080/sso/authorization?param=value&param=anothervalue")
 		if user, e := provider.Authenticate(headers, scope); e == nil {
 			t.Error("Authentication should have failed")
-		} else if !errors.FoundRedirect.Is(e) {
+		} else if !events.FoundRedirect.Is(e) {
 			t.Error("expected a redirection event")
 		} else if headers.Get("Location") != "https://openid.com" {
 			t.Errorf("should redirect to https://lopenid.com0 : %s", headers.Get("Location"))

@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/gomatbase/go-we"
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 )
 
 type BasicAuthenticationProviderBuilder interface {
@@ -38,13 +38,13 @@ func (bap *basicAuthenticationProvider) Authenticate(headers http.Header, scope 
 		strings.HasPrefix(strings.ToLower(authorization[:6]), "basic ") {
 
 		if decoded, e := base64.StdEncoding.DecodeString(authorization[6:]); e != nil {
-			return nil, errors.BadRequestError.WithPayload("text/plain", e.Error())
+			return nil, events.BadRequestError.WithPayload("text/plain", []byte(e.Error()))
 		} else if username, password, found := strings.Cut(string(decoded), ":"); !found {
-			return nil, errors.BadRequestError.WithPayload("text/plain", "invalid credentials")
+			return nil, events.BadRequestError.WithPayload("text/plain", []byte("invalid credentials"))
 		} else {
 			md5Sum := md5.Sum([]byte(password))
 			if user, e := bap.credentialsProvider.Authenticate(username, base64.StdEncoding.EncodeToString(md5Sum[:])); e != nil {
-				return nil, errors.ForbiddenError.WithPayload("text/plain", e.Error())
+				return nil, events.ForbiddenError.WithPayload("text/plain", []byte(e.Error()))
 			} else {
 				return user, nil
 			}

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/security"
 	"github.com/gomatbase/go-we/test"
 )
@@ -42,7 +42,7 @@ func TestBasicAuthenticationProvider(t *testing.T) {
 			t.Errorf("Unexpected user return when authentication should have failed: %v", *user)
 		} else if e == nil {
 			t.Error("Unexpected successful authentication (no error returned).")
-		} else if !e.(errors.WeError).Is(errors.ForbiddenError) {
+		} else if !e.(events.WeEvent).Is(events.ForbiddenError) {
 			t.Errorf("Expected Forbidden error, instead got: %s", e.Error())
 		}
 	})
@@ -55,7 +55,7 @@ func TestBasicAuthenticationProvider(t *testing.T) {
 			t.Errorf("Unexpected user return when authentication should have failed: %v", *user)
 		} else if e == nil {
 			t.Error("Unexpected successful authentication (no error returned).")
-		} else if !e.(errors.WeError).Is(errors.BadRequestError) {
+		} else if !e.(events.WeEvent).Is(events.BadRequestError) {
 			t.Errorf("Expected Bad Request error, instead got: %s", e.Error())
 		}
 		scope.SetHeader("Authorization", "Basic something")
@@ -63,7 +63,7 @@ func TestBasicAuthenticationProvider(t *testing.T) {
 			t.Errorf("Unexpected user return when authentication should have failed: %v", *user)
 		} else if e == nil {
 			t.Error("Unexpected successful authentication (no error returned).")
-		} else if !e.(errors.WeError).Is(errors.BadRequestError) {
+		} else if !e.(events.WeEvent).Is(events.BadRequestError) {
 			t.Errorf("Expected Bad Request error, instead got: %s", e.Error())
 		}
 	})
