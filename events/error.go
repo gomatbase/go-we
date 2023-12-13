@@ -8,6 +8,13 @@ import (
 	"fmt"
 )
 
+// Event Categories for flow control events
+const (
+	RequestFlow  = 1
+	Interruption = 2
+	Redirection  = 3
+)
+
 // WeEvent is the interface for events that are meant to be used both as error as well as a flow control event.
 // It always has an http status associated as it will potentially be used to interrupt the flow and return a response.
 // The attribute is a string that the engine may use to set headers or attributes in requests and responses, while payload

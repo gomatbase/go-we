@@ -7,8 +7,9 @@ package we
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/pathTree"
 )
 
@@ -94,6 +95,14 @@ func (rs *requestScope) SetInSession(key string, value interface{}) {
 	}
 }
 
+func (rs *requestScope) updateEndpoint(endpoint string) {
+	parts := strings.Split(endpoint, "?")
+	rs.request.URL.Path = parts[0]
+	if len(parts) > 1 {
+		rs.request.URL.RawQuery = parts[1]
+	}
+}
+
 type HandlerFunction func(ResponseWriter, RequestScope) error
 
 type FilterFunction func(http.Header, RequestScope) error
@@ -165,15 +174,7 @@ func (wc *webEngine) Handler() http.Handler {
 	return http.HandlerFunc(wc.process)
 }
 
-func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
-
-	rw := &responseWriter{httpResponseWriter: w}
-	defer func() {
-		if recovery := recover(); recovery != nil {
-			wc.errorHandler.HandleError(rw, errors.InternalServerError, nil)
-		}
-	}()
-
+func (wc *webEngine) findHandler(r *http.Request) (handler *HandlerFunction, variables map[string]string) {
 	method := r.Method
 	pt, found := wc.matchTrees[method]
 	if !found {
@@ -182,16 +183,27 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// match the incoming endpoint to a registered handler
-	handler, variables := pt.Get(r.URL.Path)
+	handler, variables = pt.Get(r.URL.Path)
 	if handler == nil && found {
 		pt = wc.matchTrees["ALL"]
 		handler, variables = pt.Get(r.URL.Path)
 	}
 
+	return
+}
+
+func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
+
+	rw := &responseWriter{httpResponseWriter: w}
+	defer func() {
+		if recovery := recover(); recovery != nil {
+			wc.errorHandler.HandleError(rw, events.InternalServerError, nil)
+		}
+	}()
+
 	// request context is always created fresh for an incoming request
 	scope := &requestScope{
 		request:    r,
-		variables:  variables,
 		attributes: make(map[string]interface{}),
 	}
 	if wc.sessionManager != nil {
@@ -200,22 +212,45 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 
 	// First process all filters in registration order
 	var e error
+loop:
 	for _, filter := range wc.filters {
 		// ignore the error for now
-		if e = filter.Filter(rw.Header(), scope); e != nil {
-			// Any of the filters may stop the process at any time. returning an error allows the filter to break
-			// the chain and provide a means to re response
-			wc.errorHandler.HandleError(rw, e, scope)
+		e = filter.Filter(rw.Header(), scope)
+		if e != nil {
+			if event, isEvent := e.(events.WeEvent); isEvent {
+				switch event.Category() {
+				case events.RequestFlow:
+					scope.updateEndpoint(event.Attribute())
+					if events.Continue.Is(event) {
+						break loop
+					}
+				case events.Interruption:
+					w.Header().Set("Content-type", event.Payload().ContentTypeHint)
+					w.WriteHeader(event.StatusCode())
+					w.Write(event.Payload().Content)
+				case events.Redirection:
+					w.Header().Set("Location", event.Attribute())
+					w.WriteHeader(event.StatusCode())
+				default:
+					wc.errorHandler.HandleError(rw, event, scope)
+				}
+			} else {
+				wc.errorHandler.HandleError(rw, e, scope)
+			}
 			return
 		}
 	}
+
 	// All filters processed successfully, time to handle the request
+	handler, variables := wc.findHandler(r)
 
 	// We first check if the request is incoming for a handled endpoint. If not we just return 404
 	if handler == nil {
-		wc.errorHandler.HandleError(rw, errors.NotFoundError, nil)
+		wc.errorHandler.HandleError(rw, events.NotFoundError, nil)
 		return
 	}
+
+	scope.variables = variables
 
 	if e = (*handler)(rw, scope); e != nil {
 		wc.errorHandler.HandleError(rw, e, scope)

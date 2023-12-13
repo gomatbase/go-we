@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gomatbase/go-we/errors"
+	"github.com/gomatbase/go-we/events"
 )
 
 type ErrorHandler interface {
@@ -33,7 +33,7 @@ func (eh *errorHandler) HandleError(w ResponseWriter, err error, scope RequestSc
 	}
 
 	statusCode := http.StatusInternalServerError
-	if weError, isType := err.(errors.WeError); isType {
+	if weError, isType := err.(events.WeEvent); isType {
 		if handler, found := eh.weErrorCatalog[weError.StatusCode()]; found {
 			handler.HandleError(w, err, scope)
 			return
