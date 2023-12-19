@@ -94,6 +94,7 @@ func (wee *weEvent) WithPayload(contentTypeHint string, content []byte) WeEvent 
 	return &weEvent{
 		statusCode: wee.statusCode,
 		message:    wee.message,
+		category:   wee.category,
 		attribute:  wee.attribute,
 		payload: &Payload{
 			ContentTypeHint: contentTypeHint,
@@ -106,6 +107,7 @@ func (wee *weEvent) WithAttribute(attribute string) WeEvent {
 	return &weEvent{
 		statusCode: wee.statusCode,
 		message:    wee.message,
+		category:   wee.category,
 		payload:    wee.payload,
 		attribute:  attribute,
 	}
