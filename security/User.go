@@ -10,6 +10,7 @@ type User struct {
 	Username string   `json:"username"`
 	Scopes   []string `json:"scopes"`
 	Origin   string   `json:"origin"`
+	OriginId string   `json:"originId"`
 	Active   bool     `json:"active"`
 	Data     any
 }

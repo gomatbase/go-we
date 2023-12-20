@@ -25,6 +25,7 @@ type RequestScope interface {
 	Set(string, interface{})
 	GetFromSession(string) interface{}
 	SetInSession(string, interface{})
+	HasSession() bool
 }
 
 type Headers interface {
@@ -35,6 +36,10 @@ type requestScope struct {
 	attributes map[string]interface{}
 	variables  map[string]string
 	session    *Session
+}
+
+func (rs *requestScope) HasSession() bool {
+	return rs.session != nil
 }
 
 func (rs *requestScope) Request() *http.Request {

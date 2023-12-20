@@ -264,7 +264,6 @@ func TestOpenIdIdentityProviderBuilder(t *testing.T) {
 	h := &handler{}
 	h.clear()
 	server := httptest.NewTLSServer(h)
-	server.Certificate()
 	defer server.Close()
 
 	oidConfig := oidConfigBytes(server.Listener.Addr().String())
@@ -287,7 +286,8 @@ func TestOpenIdIdentityProviderBuilder(t *testing.T) {
 				t.Errorf("Creating an open id provider with no endpoints should fail")
 			}
 		}()
-		security.OpenIdIdentityProvider("https://localhost:23943").Tls(tlsConfig).OpenIdConfigurationEndpoint("somehing").Build()
+		security.OpenIdIdentityProvider("https://localhost:23943").Tls(tlsConfig).
+			OpenIdConfigurationEndpoint("somehing").Build().TokenIntrospector()
 	})
 	t.Run("Test no endpoints provided", func(t *testing.T) {
 		defer func() {
@@ -297,7 +297,7 @@ func TestOpenIdIdentityProviderBuilder(t *testing.T) {
 				t.Errorf("When giving no specific endpoints the well-known endpoint should be called")
 			}
 		}()
-		security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).Tls(tlsConfig).Build()
+		security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).Tls(tlsConfig).Build().TokenIntrospector()
 	})
 	h.reset()
 	t.Run("Test invalid openid configuration url", func(t *testing.T) {
@@ -383,7 +383,7 @@ func TestOpenIdIdentityProviderBuilder(t *testing.T) {
 			}
 		}()
 		h.mock("/.well-known/openid-configuration", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: oidConfig})
-		security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).Tls(tlsConfig).Build()
+		security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).Tls(tlsConfig).Build().TokenIntrospector()
 	})
 	h.reset()
 	t.Run("Test possible introspection with explicit invalid jwks endpoint", func(t *testing.T) {
@@ -490,7 +490,7 @@ func TestOpenIdIdentityProviderBuilder(t *testing.T) {
 			}
 		}()
 		security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).Tls(tlsConfig).
-			JwksEndpoint("jwks").Build()
+			JwksEndpoint("jwks").Build().TokenIntrospector()
 	})
 	h.reset()
 	t.Run("Test invalid introspection with valid jwks url", func(t *testing.T) {
@@ -516,12 +516,12 @@ func TestOpenIdIdentityProviderBuilder(t *testing.T) {
 		}()
 		h.mock("/.well-known/openid-configuration", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: oidConfig})
 		h.mock("/jwks", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: []byte("wrong")})
-		security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).Tls(tlsConfig).Build()
+		security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).Tls(tlsConfig).Build().TokenIntrospector()
 	})
 	h.reset()
 }
 
-func TestOauth2IdentityProvider(t *testing.T) {
+func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 	h := &handler{}
 	h.clear()
 	server := httptest.NewTLSServer(h)
@@ -552,7 +552,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 		h.mock("/jwks", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: jwksBody})
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).
-			Build()
+			Build().TokenIntrospector()
 		if user, e := provider.Introspect(token); e != nil {
 			t.Errorf("introspection should not fail with a valid token: %v", e)
 		} else if user == nil {
@@ -574,7 +574,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 		}})
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).
-			Build()
+			Build().TokenIntrospector()
 		if user, e := provider.Introspect(token); e != nil {
 			t.Errorf("introspection should not fail with a valid token: %v", e)
 		} else if user == nil {
@@ -590,7 +590,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 		h.mock("/jwks", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: oldJwksBody})
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).
-			Build()
+			Build().TokenIntrospector()
 		if user, e := provider.Introspect(token); e == nil {
 			t.Errorf("introspection should fail with an unknown signing key")
 		} else if user != nil {
@@ -601,7 +601,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 	t.Run("Test successful jwt validation with provided jwks", func(t *testing.T) {
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).Jwks([]security.JwKey{jwKey}).
-			Build()
+			Build().TokenIntrospector()
 		if user, e := provider.Introspect(token); e != nil {
 			t.Errorf("introspection should not fail with a valid token: %v", e)
 		} else if user == nil {
@@ -614,7 +614,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 	t.Run("Test unsuccessful jwt validation with bad signature", func(t *testing.T) {
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).Jwks([]security.JwKey{jwKey}).
-			Build()
+			Build().TokenIntrospector()
 		if user, e := provider.Introspect(token + "="); e == nil {
 			t.Error("introspection should fail with an invalid signature")
 		} else if user != nil {
@@ -627,7 +627,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 		h.mock("/oauth/token", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: tokenResponse})
 		provider := security.OpenIdIdentityProvider("https://"+server.Listener.Addr().String()).
 			Tls(tlsConfig).Client("client", "secret").
-			Build()
+			Build().TokenIntrospector()
 
 		introspection, _ := json.Marshal(&security.TokenIntrospection{
 			Active:     true,
@@ -660,7 +660,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 		h.mock("/oauth/token", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: tokenResponse})
 		provider := security.OpenIdIdentityProvider("https://"+server.Listener.Addr().String()).
 			Tls(tlsConfig).Client("client", "secret").Jwks([]security.JwKey{jwKey}).
-			Build()
+			Build().TokenIntrospector()
 		introspection, _ := json.Marshal(&security.TokenIntrospection{
 			Active:     true,
 			Scope:      "openid",
@@ -692,7 +692,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 		h.mock("/oauth/token", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: tokenResponse})
 		provider := security.OpenIdIdentityProvider("https://"+server.Listener.Addr().String()).
 			Tls(tlsConfig).Client("client", "secret").
-			Build()
+			Build().TokenIntrospector()
 		if user, e := provider.Introspect("something"); e == nil {
 			t.Error("introspection should fail with an inactive token")
 		} else if user != nil {
@@ -705,7 +705,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 		h.mock("/oauth/token", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: tokenResponse})
 		provider := security.OpenIdIdentityProvider("https://"+server.Listener.Addr().String()).
 			Tls(tlsConfig).Client("client", "secret").
-			Build()
+			Build().TokenIntrospector()
 		h.mock("/introspect", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: []byte("invalid json")})
 		if user, e := provider.Introspect("something"); e == nil {
 			t.Error("introspection should fail with an inactive token")
@@ -719,7 +719,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 		h.mock("/oauth/token", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: tokenResponse})
 		provider := security.OpenIdIdentityProvider("https://"+server.Listener.Addr().String()).
 			Tls(tlsConfig).Client("client", "secret").
-			Build()
+			Build().TokenIntrospector()
 		introspection, _ := json.Marshal(&security.TokenIntrospection{
 			Active:     false,
 			Scope:      "openid",
@@ -749,7 +749,7 @@ func TestOauth2IdentityProvider(t *testing.T) {
 		provider := security.OpenIdIdentityProvider("https://"+server.Listener.Addr().String()).
 			Tls(tlsConfig).Client("client", "secret").ClaimsMapper(security.DefaultClaimsMapper).
 			JwtValidationFallback(true).
-			Build()
+			Build().TokenIntrospector()
 
 		introspection, _ := json.Marshal(&security.TokenIntrospection{
 			Active:     true,

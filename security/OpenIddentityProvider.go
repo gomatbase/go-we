@@ -27,6 +27,9 @@ import (
 )
 
 const (
+	AuthorizationCodeUrl = "%s?response_type=code%s&client_id=%s&redirect_uri=%s&state=%s"
+	ScopesQueryParameter = "&scope=%s"
+
 	UnsupportedKeyType    = err.ErrorF("unsupported key type: %s")
 	ModulusDecodingError  = err.ErrorF("error decoding key %s modulus: %v")
 	ExponentDecodingError = err.ErrorF("error decoding key %s exponent: %v")
@@ -34,6 +37,8 @@ const (
 	FailedToRefreshJwks   = err.ErrorF("failed to refresh jwks: %v")
 	InvalidClainsError    = err.ErrorF("invalid claims: %s")
 )
+
+type UserEnrichmentFunction func(*User) (*User, error)
 
 type OpenIdConfiguration struct {
 	Issuer                                     string   `json:"issuer"`
@@ -76,6 +81,19 @@ type TokenIntrospection struct {
 	TokenId    string         `json:"jti"`
 }
 
+type TokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+type TokenData struct {
+	Raw           string
+	Claims        *jwt.MapClaims
+	Introspection *TokenIntrospection
+}
+
 type ClaimsMapper func(claims *jwt.MapClaims) (*User, error)
 
 var DefaultClaimsMapper = func(claims *jwt.MapClaims) (*User, error) {
@@ -87,22 +105,20 @@ var DefaultClaimsMapper = func(claims *jwt.MapClaims) (*User, error) {
 	isType := true
 	if value, found := (*claims)["sub"]; !found {
 		return nil, InvalidClainsError.WithValues("claims has no subject")
-	} else if user.Username, isType = value.(string); !isType {
+	} else if user.OriginId, isType = value.(string); !isType {
 		return nil, InvalidClainsError.WithValues("subject is not a string")
 	}
+	user.Username = user.OriginId
 	if value, found := (*claims)["iss"]; found {
 		if user.Origin, isType = value.(string); !isType {
 			return nil, InvalidClainsError.WithValues("issuer is not a string")
 		}
 	}
 	if value, found := (*claims)["scope"]; found {
-		switch value.(type) {
-		case []string:
-			user.Scopes = value.([]string)
-		case string:
-			user.Scopes = strings.Split(value.(string), " ")
-		default:
-			return nil, InvalidClainsError.WithValues("scope is not a string nor a list of strings")
+		var e error
+		user.Scopes, e = translateScopes(value)
+		if e != nil {
+			return nil, e
 		}
 	}
 
@@ -126,17 +142,26 @@ type JwKey struct {
 	X5C       []string `json:"x5c,omitempty"`
 }
 
+type BearerAndSsoProvider interface {
+	TokenIntrospector
+	AuthorizationCodeProvider
+	TokenIntrospector() TokenIntrospector
+	AuthorizationCodeProvider() AuthorizationCodeProvider
+}
+
 type OpenIdIdentityProviderBuilder interface {
 	OpenIdConfigurationEndpoint(path string) OpenIdIdentityProviderBuilder
 	IntrospectionEndpoint(path string) OpenIdIdentityProviderBuilder
+	UserEnrichment(function UserEnrichmentFunction) OpenIdIdentityProviderBuilder
 	TokenEndpoint(path string) OpenIdIdentityProviderBuilder
 	JwksEndpoint(path string) OpenIdIdentityProviderBuilder
 	Jwks(jwks []JwKey) OpenIdIdentityProviderBuilder
 	JwtValidationFallback(fallbackToIntrospection bool) OpenIdIdentityProviderBuilder
 	ClaimsMapper(mapper ClaimsMapper) OpenIdIdentityProviderBuilder
+	Scope(scope ...string) OpenIdIdentityProviderBuilder
 	Client(client, secret string) OpenIdIdentityProviderBuilder
 	Tls(config *tls.Config) OpenIdIdentityProviderBuilder
-	Build() TokenIntrospector
+	Build() BearerAndSsoProvider
 }
 
 func OpenIdIdentityProvider(openIdUrl string) OpenIdIdentityProviderBuilder {
@@ -152,9 +177,20 @@ type openIdIdentityProviderBuilder struct {
 	introspectionEndpoint       string
 	tokenEndpoint               string
 	jwksEndpoint                string
+	scopes                      []string
 	jwks                        []JwKey
 	tlsConfig                   *tls.Config
 	provider                    *openIdIdentityProvider
+}
+
+func (oipb *openIdIdentityProviderBuilder) UserEnrichment(function UserEnrichmentFunction) OpenIdIdentityProviderBuilder {
+	oipb.provider.userEnrichmentFunction = function
+	return oipb
+}
+
+func (oipb *openIdIdentityProviderBuilder) Scope(scope ...string) OpenIdIdentityProviderBuilder {
+	oipb.scopes = scope
+	return oipb
 }
 
 func (oipb *openIdIdentityProviderBuilder) OpenIdConfigurationEndpoint(path string) OpenIdIdentityProviderBuilder {
@@ -209,7 +245,7 @@ func (oipb *openIdIdentityProviderBuilder) Tls(config *tls.Config) OpenIdIdentit
 	return oipb
 }
 
-func (oipb *openIdIdentityProviderBuilder) Build() TokenIntrospector {
+func (oipb *openIdIdentityProviderBuilder) Build() BearerAndSsoProvider {
 	if oipb.openIdUrl[len(oipb.openIdUrl)-1] == '/' {
 		oipb.openIdUrl = oipb.openIdUrl[:len(oipb.openIdUrl)-1]
 	}
@@ -308,15 +344,19 @@ func (oipb *openIdIdentityProviderBuilder) Build() TokenIntrospector {
 		panic(e)
 	}
 
-	if !oipb.provider.canIntrospect && !oipb.provider.canValidate {
-		panic("no means to validate a token")
-	}
+	// Can only check authorization codes if the token endpoint is available and credentials are given, which is the
+	// case if token introspection is possible
+	oipb.provider.canCheckCodes = len(oipb.provider.openIdConfiguration.AuthorizationEndpoint) > 0 && oipb.provider.canIntrospect
 
 	if oipb.provider.canValidate {
 		oipb.provider.jwtParser = jwt.NewParser()
 		if oipb.provider.claimsMapper == nil {
 			oipb.provider.claimsMapper = DefaultClaimsMapper
 		}
+	}
+
+	if len(oipb.scopes) > 0 {
+		oipb.provider.requestScopes = fmt.Sprintf(ScopesQueryParameter, url.PathEscape(strings.Join(oipb.scopes, " ")))
 	}
 
 	return oipb.provider
@@ -331,16 +371,71 @@ jwt, should be validated using the exposed jwk endpoint.
 type openIdIdentityProvider struct {
 	client     string
 	secret     string
-	jwks       map[string]any
 	httpClient *http.Client
 
-	openIdConfiguration         OpenIdConfiguration
+	openIdConfiguration OpenIdConfiguration
+
+	canCheckCodes bool
+	requestScopes string
+
+	jwks                        map[string]any
 	introspectionEndpoint       string
 	allowIntrospectionIfInvalid bool
 	canValidate                 bool
 	canIntrospect               bool
 	jwtParser                   *jwt.Parser
 	claimsMapper                ClaimsMapper
+	authorizationTokenFormat    string
+	userEnrichmentFunction      UserEnrichmentFunction
+}
+
+func (oip *openIdIdentityProvider) AuthorizationUrl(replyHandlerUrl, state string) string {
+	return fmt.Sprintf(AuthorizationCodeUrl, oip.openIdConfiguration.AuthorizationEndpoint, oip.requestScopes, oip.client, url.QueryEscape(replyHandlerUrl), state)
+}
+
+func (oip *openIdIdentityProvider) State(request *http.Request) (state string, accessCode string) {
+	q := request.URL.Query()
+	return q.Get("state"), q.Get("code")
+}
+
+func (oip *openIdIdentityProvider) ValidateAuthorizationCode(code, replyHandlerUrl string) (user *User, e error) {
+	b := fmt.Sprintf("grant_type=authorization_code&token_format=%s&client_id=%s%s&code=%s&redirect_uri=%s", oip.authorizationTokenFormat, oip.client, oip.requestScopes, code, replyHandlerUrl)
+	request, e := http.NewRequest("POST", oip.openIdConfiguration.TokenEndpoint,
+		bytes.NewReader([]byte(b)))
+	if e != nil {
+		return nil, e
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	response, e := oip.httpClient.Do(request)
+	if e != nil {
+		return nil, e
+	}
+	body, e := io.ReadAll(response.Body)
+	tokenResponse := &TokenResponse{}
+	if e = json.Unmarshal(body, tokenResponse); e != nil {
+		return nil, e
+	}
+
+	if user, e = oip.Introspect(tokenResponse.AccessToken); e != nil {
+		return nil, e
+	} else if oip.userEnrichmentFunction != nil {
+		user, e = oip.userEnrichmentFunction(user)
+	}
+	return
+}
+
+func (oip *openIdIdentityProvider) TokenIntrospector() TokenIntrospector {
+	if !oip.canIntrospect && !oip.canValidate {
+		panic("no means to validate a token")
+	}
+	return oip
+}
+
+func (oip *openIdIdentityProvider) AuthorizationCodeProvider() AuthorizationCodeProvider {
+	if !oip.canCheckCodes {
+		panic("no means to validate an authorization code")
+	}
+	return oip
 }
 
 func (oip *openIdIdentityProvider) isValidJwtToken(token string) (*jwt.Token, error) {
@@ -373,7 +468,15 @@ func (oip *openIdIdentityProvider) Introspect(token string) (*User, error) {
 	if oip.canValidate {
 		jwtToken, e := oip.isValidJwtToken(token)
 		if e == nil {
-			return oip.claimsMapper(jwtToken.Claims.(*jwt.MapClaims))
+			if user, e := oip.claimsMapper(jwtToken.Claims.(*jwt.MapClaims)); e != nil {
+				return nil, e
+			} else {
+				user.Data = &TokenData{
+					Raw:    token,
+					Claims: jwtToken.Claims.(*jwt.MapClaims),
+				}
+				return user, nil
+			}
 		} else if jwtToken != nil && !oip.allowIntrospectionIfInvalid {
 			// if we don't allow introspecting when the token is invalid, return the error immediately
 			return nil, e
@@ -401,23 +504,17 @@ func (oip *openIdIdentityProvider) Introspect(token string) (*User, error) {
 		return nil, errors.New("token is not active")
 	}
 
-	if scopes, isArray := introspection.Scope.([]string); isArray {
-		introspection.Scopes = scopes
-	} else if scopes, isArray := introspection.Scope.([]any); isArray {
-		introspection.Scopes = make([]string, len(scopes))
-		for i, scope := range scopes {
-			introspection.Scopes[i], _ = scope.(string)
-		}
-	} else if scopes, isString := introspection.Scope.(string); isString {
-		introspection.Scopes = strings.Split(scopes, " ")
-	}
+	introspection.Scopes, _ = translateScopes(introspection.Scope)
 
 	return &User{
 		Username: introspection.Username,
 		Scopes:   introspection.Scopes,
 		Origin:   introspection.Issuer,
 		Active:   introspection.Active,
-		Data:     introspection,
+		Data: &TokenData{
+			Raw:           token,
+			Introspection: introspection,
+		},
 	}, nil
 }
 
@@ -449,13 +546,6 @@ func (oip *openIdIdentityProvider) setKeys(keys []JwKey) error {
 	return nil
 }
 
-func ifNil(value, defaultValue any) any {
-	if value == nil {
-		return defaultValue
-	}
-	return value
-}
-
 // refreshJwks tries to load the keys from the openId server. If it fails it will simply not update the cached keys
 // and if triggered due to a token validation signed by an unknown key, it will end up failing the validation.
 func (oip *openIdIdentityProvider) refreshJwks() error {
@@ -473,4 +563,28 @@ func (oip *openIdIdentityProvider) refreshJwks() error {
 	}
 
 	return oip.setKeys(jwks.Keys)
+}
+
+func ifNil(value, defaultValue any) any {
+	if value == nil {
+		return defaultValue
+	}
+	return value
+}
+
+func translateScopes(scope any) (scopes []string, e error) {
+	switch scope.(type) {
+	case []string:
+		scopes = scope.([]string)
+	case string:
+		scopes = strings.Split(scope.(string), " ")
+	case []any:
+		scopes = make([]string, len(scope.([]any)))
+		for i, s := range scope.([]any) {
+			scopes[i], _ = s.(string)
+		}
+	default:
+		e = InvalidClainsError.WithValues("scope is not a string nor a list of strings")
+	}
+	return
 }

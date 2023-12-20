@@ -28,7 +28,9 @@ type AuthorizationCodeProvider interface {
 }
 
 type SSOAuthenticationProviderBuilder interface {
+	RedirectToRequestedUrl(redirect bool) SSOAuthenticationProviderBuilder
 	Address(string) SSOAuthenticationProviderBuilder
+	DynamicAddress(dynamic bool) SSOAuthenticationProviderBuilder
 	DefaultAuthenticatedEndpoint(string) SSOAuthenticationProviderBuilder
 	Realm(string) SSOAuthenticationProviderBuilder
 	AuthorizationCodeProvider(AuthorizationCodeProvider) SSOAuthenticationProviderBuilder
@@ -40,6 +42,16 @@ type ssoAuthenticationProviderBuilder struct {
 	provider *ssoAuthenticationProvider
 }
 
+func (sapb *ssoAuthenticationProviderBuilder) DynamicAddress(dynamic bool) SSOAuthenticationProviderBuilder {
+	sapb.provider.dynamicBaseUrl = dynamic
+	return sapb
+}
+
+func (sapb *ssoAuthenticationProviderBuilder) RedirectToRequestedUrl(redirect bool) SSOAuthenticationProviderBuilder {
+	sapb.provider.chainAuthenticatedEndpoint = !redirect
+	return sapb
+}
+
 func (sapb *ssoAuthenticationProviderBuilder) Address(publicAddress string) SSOAuthenticationProviderBuilder {
 	if len(publicAddress) == 0 {
 		panic("public address cannot be empty")
@@ -49,7 +61,7 @@ func (sapb *ssoAuthenticationProviderBuilder) Address(publicAddress string) SSOA
 	} else if publicUrl.Opaque != "" {
 		panic("opaque urls are not supported for public address")
 	} else {
-		// let's clean the url and revert to string
+		// let's make sure the url is clean and revert to string
 		publicUrl.Path = ""
 		publicUrl.RawPath = ""
 		publicUrl.RawQuery = ""
@@ -114,6 +126,7 @@ func (sapb *ssoAuthenticationProviderBuilder) Build() AuthenticationProvider {
 		sapb.provider.defaultEndpoint = DefaultAuthenticatedEndpoint
 	}
 	sapb.provider.authorizationRequests = make(map[string]*url.URL)
+	sapb.provider.otps = make(map[string]*User)
 	return sapb.provider
 }
 
@@ -126,13 +139,18 @@ type ssoAuthenticationProvider struct {
 	authorizationCodeProvider AuthorizationCodeProvider
 	replyHandlerEndpoint      string
 
-	authorizationRequests map[string]*url.URL
-	defaultEndpoint       string
-	address               string
+	authorizationRequests      map[string]*url.URL
+	otps                       map[string]*User
+	defaultEndpoint            string
+	addressSchema              string
+	addressHost                string
+	address                    string
+	chainAuthenticatedEndpoint bool
+	dynamicBaseUrl             bool
 }
 
 func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we.RequestScope) (*User, error) {
-	// let's check if were handling a reply from an authorization code request
+	// let's check if we're handling a reply from an authorization code request
 	request := scope.Request()
 	requestUrl := scope.Request().URL
 	if requestUrl.Path == sap.replyHandlerEndpoint {
@@ -140,64 +158,101 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 		originalDestination, found := sap.authorizationRequests[requestId]
 		if !found {
 			// in case this might be a redirection mistake, the authenticated redirection should go back to the default endpoint
-			requestUrl.Path = sap.defaultEndpoint
+			requestUrl.Path = sap.baseUrl(scope.Request()) + sap.defaultEndpoint
 			requestUrl.RawQuery = ""
 		} else {
 			delete(sap.authorizationRequests, requestId)
+			headers.Set("Content-Location", originalDestination.String())
+
 			if user, e := sap.authorizationCodeProvider.ValidateAuthorizationCode(authorizationCode, sap.redirectUrl(request)); e != nil {
 				return nil, events.UnauthorizedError
 			} else if user == nil {
 				return nil, events.UnauthorizedError
-			} else {
+			} else if sap.chainAuthenticatedEndpoint {
 				// override the request path to the original request
-				location := originalDestination.Path
-				if len(originalDestination.RawQuery) > 0 {
-					location = location + "?" + originalDestination.RawQuery
+				return user, events.Continue
+			} else {
+				if !scope.HasSession() {
+					// There are no sessions in place, let's provide an OTP through a query parameter
+					otp := uuid.NewString()
+					sap.otps[otp] = user
+					q := originalDestination.Query()
+					q.Add("otp", otp)
+					originalDestination.RawQuery = q.Encode()
 				}
-				headers.Set("Content-Location", location)
-				request.URL = originalDestination
-				return user, nil
+				return user, events.FoundRedirect.WithAttribute(originalDestination.String())
 			}
+		}
+	}
+
+	// we check if there's an OTP in the request, which would be the case when there's no sessions active and the
+	// authorization should redirect to the original destination
+	if otp, found := scope.LookupParameters("otp"); found {
+		if user, found := sap.otps[otp[0]]; found {
+			delete(sap.otps, otp[0])
+			return user, nil
+		} else {
+			// not found, might be a redresh. Let's remove the otp and redirect to the requested url
+			q := requestUrl.Query()
+			q.Del("otp")
+			requestUrl.RawQuery = q.Encode()
 		}
 	}
 
 	// this authorization provider is meant to either use the user in session, or redirect to the authorization server
 	requestId := uuid.NewString()
-	sap.authorizationRequests[requestId] = requestUrl
-	headers.Set("Location", sap.authorizationCodeProvider.AuthorizationUrl(sap.redirectUrl(request), requestId))
-	return nil, events.FoundRedirect
+	// the request doesn't have the scheme and host of the request, let's fill it and store it for later autentication redirection
+	request.URL.Scheme, request.URL.Host, _ = sap.baseUrlSchemeAndHost(request)
+	sap.authorizationRequests[requestId] = request.URL
+	return nil, events.FoundRedirect.WithAttribute(sap.authorizationCodeProvider.AuthorizationUrl(sap.redirectUrl(request), requestId))
 }
 
 func (sap *ssoAuthenticationProvider) redirectUrl(request *http.Request) string {
-	address := sap.address
-	if len(address) == 0 {
-		var schema, host string
+	return sap.baseUrl(request) + sap.replyHandlerEndpoint
+}
+
+func (sap *ssoAuthenticationProvider) baseUrl(request *http.Request) string {
+	if len(sap.address) == 0 || sap.dynamicBaseUrl {
+		_, _, address := sap.baseUrlSchemeAndHost(request)
+		return address
+	}
+	return sap.address
+}
+
+func (sap *ssoAuthenticationProvider) baseUrlSchemeAndHost(request *http.Request) (scheme string, host string, address string) {
+	if sap.dynamicBaseUrl || len(sap.addressSchema) == 0 || len(sap.addressHost) == 0 {
 		if forwarded := request.Header.Get("Forwarded"); len(forwarded) > 0 {
 			// Forwarded header is present, let's try to use it
 			segments := strings.Split(forwarded, ";")
-			schema, host = extractSchemaAndHost(segments)
-			if len(schema) == 0 {
+			scheme, host = extractSchemaAndHost(segments)
+			if len(scheme) == 0 {
 				// let's default to https
-				schema = "https"
+				scheme = "https"
 			}
 		} else if host = request.Header.Get("X-Forwarded-Host"); len(host) > 0 {
-			schema = request.Header.Get("X-Forwarded-Proto")
-			if len(schema) == 0 {
+			scheme = request.Header.Get("X-Forwarded-Proto")
+			if len(scheme) == 0 {
 				// let's default to https
-				schema = "https"
+				scheme = "https"
 			}
 		} else {
 			// no forwarded headers, let's try to use the request url
 			host = request.Host
 			if request.TLS != nil {
-				schema = "https"
+				scheme = "https"
 			} else {
-				schema = "http"
+				scheme = "http"
 			}
 		}
-		address = fmt.Sprintf("%s://%s", schema, host)
+
+		address = fmt.Sprintf("%s://%s", scheme, host)
+		if sap.dynamicBaseUrl {
+			sap.addressSchema = scheme
+			sap.addressHost = host
+			sap.address = address
+		}
 	}
-	return address + sap.replyHandlerEndpoint
+	return
 }
 
 func (sap *ssoAuthenticationProvider) Realm() string {
