@@ -276,7 +276,7 @@ func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scop
 	// we can authenticate the user with any authentication provider attached to the path and then check again,
 	// or no user has been found yet, and we simply check if we can authenticate the user with any authentication
 	// before checking the authorization
-	if user != nil && (ar.authorization == nil || ar.authorization != nil && ar.authorization.IsAuthorized(user, scope)) {
+	if ar.authorization == nil || ar.authorization.IsAuthorized(user, scope) {
 		return user, nil
 	}
 
@@ -296,7 +296,7 @@ func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scop
 	// in which case an unauthorized 403 error should be returned, there is no root authenticated user and no path
 	// authenticated user, in which case an unauthenticated 401 error should be returned, or there is a path
 	// user that should be checked for authorization
-	// Defined paths should always be authenticated and authorized.
+	// Defined paths should always be authenticated or authorized.
 	if authorizationUser == nil {
 		// no path authenticated user is found
 		if user == nil {
@@ -387,6 +387,8 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 					sendChallenges(header, f.challenges)
 				}
 				return e
+			} else if user == nil {
+				return nil
 			}
 		}
 	}
