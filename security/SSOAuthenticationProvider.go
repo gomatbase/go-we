@@ -235,6 +235,9 @@ func (sap *ssoAuthenticationProvider) baseUrlSchemeAndHost(request *http.Request
 				// let's default to https
 				scheme = "https"
 			}
+		} else if scheme = request.Header.Get("X-Forwarded-Proto"); len(scheme) > 0 {
+			// X-Forwarded-Proto may be sent without X-Forwarded-Host
+			host = request.Host
 		} else {
 			// no forwarded headers, let's try to use the request url
 			host = request.Host
@@ -246,7 +249,7 @@ func (sap *ssoAuthenticationProvider) baseUrlSchemeAndHost(request *http.Request
 		}
 
 		address = fmt.Sprintf("%s://%s", scheme, host)
-		if sap.dynamicBaseUrl {
+		if !sap.dynamicBaseUrl {
 			sap.addressSchema = scheme
 			sap.addressHost = host
 			sap.address = address
