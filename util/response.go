@@ -11,8 +11,8 @@ import (
 
 func ReplyJson(w http.ResponseWriter, status int, value interface{}) error {
 	if body, e := json.Marshal(value); e == nil {
-		w.WriteHeader(status)
 		w.Header().Add("Content-type", "application/json")
+		w.WriteHeader(status)
 		if _, e = w.Write(body); e != nil {
 			return e
 		}
