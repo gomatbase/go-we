@@ -556,8 +556,10 @@ func (oip *openIdIdentityProvider) refreshJwks() error {
 	jwks := &JwKeys{}
 	// at this stage the url was validated, no need to check for errors
 	request, _ := http.NewRequest("GET", oip.openIdConfiguration.JwksUri, nil)
-	if response, e := oip.httpClient.Do(request); e != nil || response.StatusCode != http.StatusOK {
-		return FailedToRefreshJwks.WithValues(ifNil(e, response.StatusCode))
+	if response, e := oip.httpClient.Do(request); e != nil {
+		return FailedToRefreshJwks.WithValues(e)
+	} else if response.StatusCode != http.StatusOK {
+		return FailedToRefreshJwks.WithValues(response.StatusCode)
 	} else if e = json.NewDecoder(response.Body).Decode(jwks); e != nil {
 		return e
 	}
