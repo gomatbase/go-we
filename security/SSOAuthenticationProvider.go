@@ -158,11 +158,10 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 		originalDestination, found := sap.authorizationRequests[requestId]
 		if !found {
 			// in case this might be a redirection mistake, the authenticated redirection should go back to the default endpoint
-			requestUrl.Path = sap.baseUrl(scope.Request()) + sap.defaultEndpoint
+			requestUrl.Path = sap.defaultEndpoint
 			requestUrl.RawQuery = ""
 		} else {
 			delete(sap.authorizationRequests, requestId)
-			headers.Set("Content-Location", originalDestination.String())
 
 			if user, e := sap.authorizationCodeProvider.ValidateAuthorizationCode(authorizationCode, sap.redirectUrl(request)); e != nil {
 				return nil, events.UnauthorizedError
@@ -170,6 +169,7 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 				return nil, events.UnauthorizedError
 			} else if sap.chainAuthenticatedEndpoint {
 				// override the request path to the original request
+				headers.Set("Content-Location", originalDestination.String())
 				return user, events.Continue
 			} else {
 				if !scope.HasSession() {
@@ -201,7 +201,7 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 
 	// this authorization provider is meant to either use the user in session, or redirect to the authorization server
 	requestId := uuid.NewString()
-	// the request doesn't have the scheme and host of the request, let's fill it and store it for later autentication redirection
+	// the request doesn't have the scheme and host of the request, let's fill it and store it for later authentication redirection
 	request.URL.Scheme, request.URL.Host, _ = sap.baseUrlSchemeAndHost(request)
 	sap.authorizationRequests[requestId] = request.URL
 	return nil, events.FoundRedirect.WithAttribute(sap.authorizationCodeProvider.AuthorizationUrl(sap.redirectUrl(request), requestId))

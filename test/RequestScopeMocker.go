@@ -148,7 +148,7 @@ func MockedRequestScope(method, rawUrl string) RequestScopeMocker {
 			ContentLength:    0,
 			TransferEncoding: nil,
 			Close:            false,
-			Host:             host,
+			Host:             parsedUrl.Host,
 		},
 	}
 }

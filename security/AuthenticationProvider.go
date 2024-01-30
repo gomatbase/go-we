@@ -11,7 +11,7 @@ import (
 )
 
 // AuthenticationProvider is an interface for authentication provider implementations. Authentication providers can
-// be addedto a security filter to provider users that will be added to the reqeust scope.
+// be addedto a security filter to provider users that will be added to the request scope.
 type AuthenticationProvider interface {
 	// Authenticate Tries to authenticate the incoming request. Each provider should extract from the incoming request
 	// the information required to authenticate it. If none of the required attributes are present in the request, then the

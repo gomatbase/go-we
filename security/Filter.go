@@ -272,50 +272,33 @@ type authorizationRules struct {
 }
 
 func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scope we.RequestScope) (*User, error) {
-	// either a user was already authenticated, in which case we check if it's authorized and if not we check if
-	// we can authenticate the user with any authentication provider attached to the path and then check again,
-	// or no user has been found yet, and we simply check if we can authenticate the user with any authentication
-	// before checking the authorization
+	// at this stage, either there is already a user (authenticated at root level or taken from session), or
+	// there is no authenticated user.
+
+	// if there's no user yet, we try to authenticate it as a user is required for path rules.,
+	if user == nil {
+		var e error
+		for _, provider := range ar.authenticationProviders {
+			if user, e = provider.Authenticate(headers, scope); e != nil {
+				return nil, e
+			} else if user != nil {
+				user.Realm = provider.Realm()
+				break
+			}
+		}
+		// still no user is present, it should be
+		if user == nil {
+			return nil, events.UnauthorizedError
+		}
+	}
+
+	// A user was authenticated, if there are authorization rules...
 	if ar.authorization == nil || ar.authorization.IsAuthorized(user, scope) {
 		return user, nil
 	}
 
-	// user is either not authorized or not authenticated, let's try to authenticate it
-	var authorizationUser *User
-	var e error
-	for _, provider := range ar.authenticationProviders {
-		if authorizationUser, e = provider.Authenticate(headers, scope); e != nil {
-			return user, e
-		} else if authorizationUser != nil {
-			authorizationUser.Realm = provider.Realm()
-			break
-		}
-	}
+	return user, events.ForbiddenError
 
-	// At this point, if no authorization user is found, either there is an authenticated user that is unauthorized,
-	// in which case an unauthorized 403 error should be returned, there is no root authenticated user and no path
-	// authenticated user, in which case an unauthenticated 401 error should be returned, or there is a path
-	// user that should be checked for authorization
-	// Defined paths should always be authenticated or authorized.
-	if authorizationUser == nil {
-		// no path authenticated user is found
-		if user == nil {
-			// no authenticated user is found at all, send challenges and unauthenticated error
-			sendChallenges(headers, ar.challenges)
-			return nil, events.UnauthorizedError
-		}
-		// there is a root authenticate user that is forbidden
-		return user, events.ForbiddenError
-	}
-
-	if ar.authorization != nil && !ar.authorization.IsAuthorized(authorizationUser, scope) {
-		// the root authenticated user  is not authorized, and the path authenticated user is also not authorized
-		// return the root authenticated user as it should not replace the scope user
-		return user, events.ForbiddenError
-	}
-
-	// the newly authorized user is returned as it should replace any currently authenticated user in scope.
-	return authorizationUser, nil
 }
 
 func sendChallenges(headers http.Header, challenges []string) {
@@ -384,6 +367,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 			var e error
 			if user, e = (*authorization).IsAuthorized(header, user, scope); e != nil {
 				if e == events.UnauthorizedError {
+					sendChallenges(header, authorization.challenges)
 					sendChallenges(header, f.challenges)
 				}
 				return e

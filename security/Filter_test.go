@@ -330,7 +330,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 			Build()
 		headers := make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e == nil {
-			t.Error("Unauthenticated call in restricted restricted path should fail")
+			t.Error("Unauthenticated call in restricted path should fail")
 		} else if !e.(events.WeEvent).Is(events.UnauthorizedError) {
 			t.Errorf("Unexpected error for unauthenticated call in restricted filter: %v", e)
 		} else if len(headers["WWW-Authenticate"]) > 0 {
@@ -402,7 +402,6 @@ func TestFilterPathAuthentication(t *testing.T) {
 	})
 	t.Run("Test session authenticated call to unauthorized path", func(t *testing.T) {
 		sessionUser := &security.User{Realm: "realm1"}
-		authenticatedUser := &security.User{Realm: "realm1"}
 		provider1 := &dummyProvider{realm: "realm1", valid: false, authenticationError: events.OKInterruption}
 		provider2 := &dummyProvider{realm: "realm2", authenticationError: events.BadRequestError}
 		filter := security.Filter(security.DefaultAuthenticatedAccess).
@@ -422,19 +421,10 @@ func TestFilterPathAuthentication(t *testing.T) {
 		provider1.authenticationError = nil
 		provider1.valid = true
 		scope.SetInSession(security.UserAttributeName, sessionUser)
-		if e := filter.Filter(headers, scope); e == nil {
-			t.Error("Expected user to not be authorized")
-		} else if e != events.BadRequestError {
-			t.Errorf("Expected error coming from path authentication, instead got error: %v", e)
+		if e := filter.Filter(headers, scope); e != events.ForbiddenError {
+			t.Errorf("Expected forbidden error coming from path authorization, instead got error: %v", e)
 		} else if scope.GetFromSession(security.UserAttributeName) != sessionUser {
 			t.Errorf("Expected session user to remain the same, instead got: %v", scope.GetFromSession(security.UserAttributeName))
-		}
-		provider2.authenticationError = nil
-		provider2.authenticatedUser = authenticatedUser
-		if e := filter.Filter(headers, scope); e != nil {
-			t.Errorf("Expected user to be authorized, instead got error: %v", e)
-		} else if scope.GetFromSession(security.UserAttributeName) != authenticatedUser {
-			t.Errorf("Expected session user to to be updated from the new realm, instead got: %v", scope.GetFromSession(security.UserAttributeName))
 		}
 	})
 	t.Run("Test unauthorized path authenticated", func(t *testing.T) {
