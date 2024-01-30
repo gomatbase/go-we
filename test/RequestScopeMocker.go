@@ -43,6 +43,10 @@ type mockedRequestScope struct {
 	session    *we.Session
 }
 
+func (m *mockedRequestScope) HasSession() bool {
+	return m.session != nil
+}
+
 func (m *mockedRequestScope) Request() *http.Request {
 	return m.request
 }
