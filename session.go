@@ -168,7 +168,7 @@ func DefaultSessionManager(configuration SessionManagerConfiguration) SessionMan
 	}
 
 	if sm.storage == nil {
-		sm.storage = &inMemorySessionStorage{}
+		sm.storage = &inMemorySessionStorage{sessions: make(map[string]*Session)}
 	}
 
 	if len(sm.cookieName) == 0 {
