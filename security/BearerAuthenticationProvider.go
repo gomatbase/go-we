@@ -12,6 +12,8 @@ import (
 	"github.com/gomatbase/go-we/events"
 )
 
+const BearerRealm = "Bearer"
+
 // TokenIntrospector allows introspecting a bearer token and return a user for it.
 // If there are no means to translate the token to a user, an error must be returned.
 type TokenIntrospector interface {
@@ -56,7 +58,7 @@ func (bapb *bearerAuthenticationProviderBuilder) Introspector(tokenIntrospector 
 
 func (bapb *bearerAuthenticationProviderBuilder) Build() AuthenticationProvider {
 	if len(bapb.provider.realm) == 0 {
-		bapb.provider.realm = "Bearer"
+		bapb.provider.realm = BearerRealm
 	}
 	if bapb.provider.tokenIntrospector == nil {
 		panic("identity provider is required")

@@ -20,6 +20,8 @@ import (
 )
 
 const (
+	FormRealm = "Form"
+
 	DefaultTemplate = "<!DOCTYPE html>" +
 		"<html lang=\"en\">" +
 		"<head>" +
@@ -323,7 +325,7 @@ func (lfapb *loginFormAuthenticationProviderBuilder) Build() AuthenticationProvi
 		lfapb.provider.loginPath = parsedActionUrl.Path
 	}
 	if len(lfapb.provider.realm) == 0 {
-		lfapb.provider.realm = "form"
+		lfapb.provider.realm = FormRealm
 	}
 	if len(lfapb.provider.defaultRedirectPath) == 0 {
 		lfapb.provider.defaultRedirectPath = "/"

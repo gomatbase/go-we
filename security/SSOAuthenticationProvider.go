@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	DefaultRealm                             = "SSO"
+	SSORealm                                 = "SSO"
 	DefaultAuthorizationReplyHandlerEndpoint = "/sso/authorization"
 	DefaultAuthenticatedEndpoint             = "/"
 )
@@ -114,7 +114,7 @@ func (sapb *ssoAuthenticationProviderBuilder) AuthorizationReplyHandler(endpoint
 
 func (sapb *ssoAuthenticationProviderBuilder) Build() AuthenticationProvider {
 	if len(sapb.provider.realm) == 0 {
-		sapb.provider.realm = DefaultRealm
+		sapb.provider.realm = SSORealm
 	}
 	if len(sapb.provider.replyHandlerEndpoint) == 0 {
 		sapb.provider.replyHandlerEndpoint = DefaultAuthorizationReplyHandlerEndpoint

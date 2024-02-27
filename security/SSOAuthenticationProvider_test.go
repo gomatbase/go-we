@@ -41,8 +41,8 @@ func TestSSOAuthenticationProviderBuilder(t *testing.T) {
 			}
 		}()
 		provider := security.SSOAuthenticationProvider().AuthorizationCodeProvider(&dummyAuthorizationCodeProvider{}).Build()
-		if provider.Realm() != security.DefaultRealm {
-			t.Errorf("realm should be %s, instead it's : %s", security.DefaultRealm, provider.Realm())
+		if provider.Realm() != security.SSORealm {
+			t.Errorf("realm should be %s, instead it's : %s", security.SSORealm, provider.Realm())
 		} else if provider.Challenge() != "" {
 			t.Error("sso provider should have no challenge")
 		}

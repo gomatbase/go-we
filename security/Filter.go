@@ -22,12 +22,14 @@ var UserAttributeName = "WE-SEC-USER"
 
 type UnauthenticatedSecurityFilterBuilder interface {
 	Authentication(...AuthenticationProvider) AuthenticatedSecurityFilterBuilder
+	OnAuthentication(triggers ...func(*User, we.RequestScope)) UnauthenticatedSecurityFilterBuilder
 	Path(paths ...string) UnauthenticatedAuthorizationBuilder
 	Build() we.Filter
 }
 
 type AuthenticatedSecurityFilterBuilder interface {
 	Path(paths ...string) AuthenticatedAuthorizationBuilder
+	OnAuthentication(triggers ...func(*User, we.RequestScope)) AuthenticatedSecurityFilterBuilder
 	Build() we.Filter
 }
 
@@ -46,6 +48,7 @@ type UnauthenticatedAuthorizationBuilder interface {
 type filterBuilder struct {
 	authenticationProviders []AuthenticationProvider
 	authorizationBuilders   []*authorizationBuilder
+	authenticationTriggers  []func(*User, we.RequestScope)
 	restricted              bool
 }
 
@@ -124,6 +127,8 @@ func (fb *filterBuilder) build() we.Filter {
 		}
 	}
 
+	result.authenticationTriggers = fb.authenticationTriggers
+
 	return result
 }
 
@@ -140,6 +145,14 @@ func (fb *filterBuilder) anonymous(paths []string) {
 
 type unauthenticatedSecurityFilterBuilder struct {
 	builder *filterBuilder
+}
+
+func (usfb *unauthenticatedSecurityFilterBuilder) OnAuthentication(triggers ...func(*User, we.RequestScope)) UnauthenticatedSecurityFilterBuilder {
+	if len(triggers) == 0 {
+		panic("no triggers provided")
+	}
+	usfb.builder.authenticationTriggers = append(usfb.builder.authenticationTriggers, triggers...)
+	return usfb
 }
 
 func (usfb *unauthenticatedSecurityFilterBuilder) Authentication(providers ...AuthenticationProvider) AuthenticatedSecurityFilterBuilder {
@@ -164,6 +177,14 @@ func (usfb *unauthenticatedSecurityFilterBuilder) Build() we.Filter {
 
 type authenticatedSecurityFilterBuilder struct {
 	builder *filterBuilder
+}
+
+func (asfb *authenticatedSecurityFilterBuilder) OnAuthentication(triggers ...func(user *User, scope we.RequestScope)) AuthenticatedSecurityFilterBuilder {
+	if len(triggers) == 0 {
+		panic("no triggers provided")
+	}
+	asfb.builder.authenticationTriggers = append(asfb.builder.authenticationTriggers, triggers...)
+	return asfb
 }
 
 func (asfb *authenticatedSecurityFilterBuilder) Path(paths ...string) AuthenticatedAuthorizationBuilder {
@@ -313,6 +334,7 @@ func sendChallenges(headers http.Header, challenges []string) {
 type filter struct {
 	globalProviders         map[string]AuthenticationProvider
 	authenticationProviders []AuthenticationProvider
+	authenticationTriggers  []func(*User, we.RequestScope)
 	registeredEndpoints     pathTree.Tree[authorizationRules]
 	authorizations          pathTree.Tree[authorizationRules]
 	challenges              []string
@@ -340,6 +362,9 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 			var e error
 			user, e = (*authorization).IsAuthorized(header, user, scope)
 			if user != nil {
+				for _, trigger := range f.authenticationTriggers {
+					execute(trigger, user, scope)
+				}
 				scope.SetInSession(UserAttributeName, user)
 			}
 			if e != nil {
@@ -390,6 +415,9 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		if sessionUser != user {
 			scope.SetInSession(UserAttributeName, user)
 		}
+		for _, trigger := range f.authenticationTriggers {
+			execute(trigger, user, scope)
+		}
 		return nil
 	} else if !f.restricted {
 		// no specific authorization rules for the given path, if it's not restricted (default is anonymous access),
@@ -399,4 +427,13 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 
 	sendChallenges(header, f.challenges)
 	return events.UnauthorizedError
+}
+
+func execute(trigger func(*User, we.RequestScope), user *User, scope we.RequestScope) {
+	defer func() {
+		if recovery := recover(); recovery != nil {
+			fmt.Println("failed to call authentication trigger", recovery)
+		}
+	}()
+	trigger(user, scope)
 }
