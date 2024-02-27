@@ -279,10 +279,13 @@ func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scop
 	if user == nil {
 		var e error
 		for _, provider := range ar.authenticationProviders {
-			if user, e = provider.Authenticate(headers, scope); e != nil {
-				return nil, e
-			} else if user != nil {
+			user, e = provider.Authenticate(headers, scope)
+			if user != nil {
 				user.Realm = provider.Realm()
+			}
+			if e != nil {
+				return user, e
+			} else {
 				break
 			}
 		}
@@ -335,13 +338,18 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		// let's check if there is any authentication provider registered for the requested path
 		if authorization, _ := f.registeredEndpoints.Get(scope.Request().URL.Path); authorization != nil {
 			var e error
-			if user, e = (*authorization).IsAuthorized(header, user, scope); e != nil {
+			user, e = (*authorization).IsAuthorized(header, user, scope)
+			if user != nil {
+				scope.SetInSession(UserAttributeName, user)
+			}
+			if e != nil {
 				if e == events.UnauthorizedError {
 					sendChallenges(header, f.challenges)
 				}
 				return e
 			}
 		}
+
 		// let's check if the request can be authenticated at root level, in case there's still no user
 		if user == nil {
 			for _, provider := range f.authenticationProviders {
