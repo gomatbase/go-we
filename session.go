@@ -99,7 +99,7 @@ func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request)
 	if session == nil {
 		sm.storageMutex.Lock()
 		session = &Session{
-			LastUse:    time.Time{},
+			LastUse:    time.Now(),
 			Id:         uuid.New().String(),
 			Attributes: make(map[string]interface{}),
 		}
