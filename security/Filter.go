@@ -296,7 +296,7 @@ func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scop
 	// at this stage, either there is already a user (authenticated at root level or taken from session), or
 	// there is no authenticated user.
 
-	// if there's no user yet, we try to authenticate it as a user is required for path rules.,
+	// if there's no user yet, we try to authenticate it for paths either a user or authorization rules are required
 	if user == nil {
 		var e error
 		for _, provider := range ar.authenticationProviders {
@@ -310,8 +310,8 @@ func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scop
 				break
 			}
 		}
-		// still no user is present, it should be
-		if user == nil {
+		// still no user is present, if there are also no authorization rules, we fail immediately
+		if user == nil && ar.authorization == nil {
 			return nil, events.UnauthorizedError
 		}
 	}
