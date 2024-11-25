@@ -34,11 +34,11 @@ func (eh *errorHandler) HandleError(w ResponseWriter, err error, scope RequestSc
 
 	statusCode := http.StatusInternalServerError
 	if weError, isType := err.(events.WeEvent); isType {
-		if handler, found := eh.weErrorCatalog[weError.StatusCode()]; found {
+		statusCode = weError.StatusCode()
+		if handler, found := eh.weErrorCatalog[statusCode]; found {
 			handler.HandleError(w, err, scope)
 			return
 		}
-		statusCode = weError.StatusCode()
 	} else if handler, found := eh.errorCatalog[err.Error()]; found {
 		handler.HandleError(w, err, scope)
 		return

@@ -7,6 +7,7 @@ package we
 import (
 	"fmt"
 	"net/http"
+	"runtime/debug"
 	"strings"
 
 	"github.com/gomatbase/go-we/events"
@@ -202,6 +203,8 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 	rw := &responseWriter{httpResponseWriter: w}
 	defer func() {
 		if recovery := recover(); recovery != nil {
+			// this is an unhandled panic recovery, print stack trace
+			debug.PrintStack()
 			wc.errorHandler.HandleError(rw, events.InternalServerError, nil)
 		}
 	}()
