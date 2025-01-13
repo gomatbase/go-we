@@ -110,7 +110,7 @@ func TestBasicAuthenticationProvider(t *testing.T) {
 		username := parts[2]
 		password := parts[3]
 
-		if realm := provider.Realm(); realm != "basic" {
+		if realm := provider.Realm(); realm != security.DefaultBasicRealm {
 			t.Errorf("Expected default \"basic\" realm. Got \"%s\" instead", realm)
 		}
 		if challenge := provider.Challenge(); challenge != "Basic" {

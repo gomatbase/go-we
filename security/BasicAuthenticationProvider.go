@@ -14,7 +14,8 @@ import (
 	"github.com/gomatbase/go-we/events"
 )
 
-const BasicRealm = "Basic"
+const DefaultBasicRealm = "Basic"
+const BasicScheme = "Basic"
 
 type BasicAuthenticationProviderBuilder interface {
 	Realm(string) BasicAuthenticationProviderBuilder
@@ -67,7 +68,7 @@ func (bap *basicAuthenticationProvider) IsValid(user *User) bool {
 }
 
 func (bap *basicAuthenticationProvider) Challenge() string {
-	return BasicRealm
+	return BasicScheme
 }
 
 func (bap *basicAuthenticationProvider) Endpoints() []string {
@@ -93,7 +94,7 @@ func (bapb *basicAuthenticationProviderBuilder) Build() AuthenticationProvider {
 		bapb.provider.credentialsProvider = DefaultCredentialsProvider()
 	}
 	if len(bapb.provider.realm) == 0 {
-		bapb.provider.realm = BasicRealm
+		bapb.provider.realm = DefaultBasicRealm
 	}
 	return bapb.provider
 }
