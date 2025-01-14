@@ -5,7 +5,9 @@
 package we
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -160,14 +162,29 @@ func (wc *webEngine) SetSessionManager(sessionManager SessionManager) {
 }
 
 func (wc *webEngine) Listen(addr string) error {
-	if wc.errorHandler == nil {
-		wc.errorHandler = &errorHandler{
-			errorCatalog:   make(map[string]ErrorHandler),
-			weErrorCatalog: make(map[int]ErrorHandler),
-		}
-	}
 	fmt.Println("Listening on", addr)
 	return http.ListenAndServe(addr, wc.Handler())
+}
+
+func (wc *webEngine) ListenWithTls(addr string, certFile string, keyFile string) error {
+	fmt.Println("Listening tls on", addr)
+	return http.ListenAndServeTLS(addr, certFile, keyFile, wc.Handler())
+}
+
+func (wc *webEngine) ListenWithTlsOptions(addr string, config *tls.Config) error {
+	if config == nil {
+		return fmt.Errorf("tls config is nil")
+	}
+
+	srv := &http.Server{Addr: addr, Handler: wc.Handler()}
+	l, e := net.Listen("tcp", addr)
+	if e != nil {
+		return e
+	}
+	defer l.Close()
+
+	fmt.Println("Listening tls on", addr)
+	return srv.Serve(tls.NewListener(l, config))
 }
 
 func (wc *webEngine) Handler() http.Handler {
