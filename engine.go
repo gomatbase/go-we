@@ -5,12 +5,15 @@
 package we
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/pathTree"
@@ -166,6 +169,11 @@ type Filter interface {
 type WebEngine interface {
 	// SetSessionManager sets the session manager to be used by the engine. Setting a session manager implicitly enables sessions
 	SetSessionManager(sessionManager SessionManager)
+	// HookShutdownFunction expects a pointer to a function which will be set with function that can be called for an immediate shutdown
+	HookShutdownFunction(shutdown *func() error)
+	// HookGraciousShutdownFunction expects a pointer to a function which will be set with function that can be called
+	// for a gracious shutdown, waiting up to waitingTime until it forces the listener to shutdown
+	HookGraciousShutdownFunction(shutdown *func(waitingTime time.Duration) error)
 	// Handle registers a handler for a path. The handler will be called for all HTTP methods
 	Handle(path string, handler HandlerFunction)
 	// HandleMethod registers a handler for a path and a specific HTTP method. functions registered by HandleMethod
@@ -193,6 +201,36 @@ type webEngine struct {
 	sessionManager SessionManager
 	// ErrorHandler to be used by the engine for any unchecked panics or errors
 	errorHandler ErrorHandler
+	// the server the engine is running on, if managed by the engine itself (with Listen* methods)
+	server *http.Server
+}
+
+// HookShutdownFunction updates the provided function placeholder with a function that can graciously shutdown the server
+func (wc *webEngine) HookShutdownFunction(shutdown *func() error) {
+	*shutdown = func() error {
+		if wc.server == nil {
+			return fmt.Errorf("listener not managed by engine")
+		}
+		return wc.server.Close()
+	}
+}
+
+// HookGraciousShutdownFunction updates the provided function placeholder with a function that can graciously shutdown the server
+func (wc *webEngine) HookGraciousShutdownFunction(shutdown *func(time.Duration) error) {
+	*shutdown = func(waitingTime time.Duration) error {
+		if wc.server == nil {
+			return fmt.Errorf("listener not managed by engine")
+		}
+		timingOutContext, cancel := context.WithTimeout(context.Background(), waitingTime)
+		e := wc.server.Shutdown(timingOutContext)
+		if errors.Is(e, context.DeadlineExceeded) {
+			// Even after the deadline the server will graciously wait for any hanging handlers to finish. We forcely close the channels
+			// attach any additional error that the close may have raised
+			e = errors.Join(e, wc.server.Close())
+		}
+		cancel() // sanity cleanup
+		return e
+	}
 }
 
 // Handle registers a handler for a path. The handler will be called for all HTTP methods
@@ -224,13 +262,15 @@ func (wc *webEngine) SetSessionManager(sessionManager SessionManager) {
 // Listen starts the engine listening on the provided address. The engine will block until the server is stopped.
 func (wc *webEngine) Listen(addr string) error {
 	fmt.Println("Listening on", addr)
-	return http.ListenAndServe(addr, wc.Handler())
+	wc.server = &http.Server{Addr: addr, Handler: wc.Handler()}
+	return wc.server.ListenAndServe()
 }
 
 // ListenWithTls starts the engine listening on the provided address using https. A certificate and key file locations must be provided.
 func (wc *webEngine) ListenWithTls(addr string, certFile string, keyFile string) error {
 	fmt.Println("Listening tls on", addr)
-	return http.ListenAndServeTLS(addr, certFile, keyFile, wc.Handler())
+	wc.server = &http.Server{Addr: addr, Handler: wc.Handler()}
+	return wc.server.ListenAndServeTLS(certFile, keyFile)
 }
 
 // ListenWithTlsOptions starts the engine listening on the provided address using https. The full tls configuration must be provided.
