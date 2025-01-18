@@ -19,6 +19,21 @@ type ErrorMarshaller interface {
 	Marshal(error) ([]byte, string)
 }
 
+type ErrorMarshallerFunction func(error) (responseBody []byte, mimeType string)
+
+func (emf ErrorMarshallerFunction) Marshal(err error) ([]byte, string) {
+	return emf(err)
+}
+
+func defaultErrorMarshaller(err error) ([]byte, string) {
+	if weError, isType := err.(events.WeEvent); isType {
+		if payload := weError.Payload(); payload != nil {
+			return payload.Content, payload.ContentTypeHint
+		}
+	}
+	return nil, ""
+}
+
 type errorHandler struct {
 	marshaller     ErrorMarshaller
 	errorCatalog   map[string]ErrorHandler

@@ -296,6 +296,7 @@ func (wc *webEngine) Handler() http.Handler {
 		wc.errorHandler = &errorHandler{
 			errorCatalog:   make(map[string]ErrorHandler),
 			weErrorCatalog: make(map[int]ErrorHandler),
+			marshaller:     ErrorMarshallerFunction(defaultErrorMarshaller),
 		}
 	}
 	return http.HandlerFunc(wc.process)

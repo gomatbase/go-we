@@ -12,10 +12,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gomatbase/go-we"
+	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/test"
 )
 
@@ -42,6 +44,13 @@ func (w waitingChannel) Wait(timeout time.Duration) bool {
 
 func (w waitingChannel) Signal() {
 	w <- true
+}
+
+var startingPort = int32(60000)
+
+func nextPort() (int, string) {
+	p := atomic.AddInt32(&startingPort, 1)
+	return int(p), fmt.Sprintf(":%d", p)
 }
 
 func newWaitingChannel() waitingChannel {
@@ -80,18 +89,19 @@ func TestWebEngineShutdown(t *testing.T) {
 
 		var serverError error
 		serverThreadControl := newWaitingChannel()
+		port, portStr := nextPort()
 		go func() {
-			serverError = engine.Listen(":58730")
+			serverError = engine.Listen(portStr)
 			serverThreadControl.Signal()
 		}()
-		waitForServer(58730)
+		waitForServer(port)
 
 		var result []byte
 		var clientError error
 		clientThreadControl := newWaitingChannel()
 		go func() {
 			clientThreadControl.Signal()
-			result, clientError = test.Request("http://localhost:58730").Get()
+			result, clientError = test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
 			clientThreadControl.Signal()
 		}()
 
@@ -134,18 +144,19 @@ func TestWebEngineShutdown(t *testing.T) {
 
 		var serverError error
 		serverThreadControl := newWaitingChannel()
+		port, portStr := nextPort()
 		go func() {
-			serverError = engine.Listen(":58730")
+			serverError = engine.Listen(portStr)
 			serverThreadControl.Signal()
 		}()
-		waitForServer(58730)
+		waitForServer(port)
 
 		var result []byte
 		var clientError error
 		clientThreadControl := newWaitingChannel()
 		go func() {
 			clientThreadControl.Signal()
-			result, clientError = test.Request("http://localhost:58730").Get()
+			result, clientError = test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
 			clientThreadControl.Signal()
 		}()
 
@@ -189,18 +200,19 @@ func TestWebEngineShutdown(t *testing.T) {
 
 		var serverError error
 		serverThreadControl := newWaitingChannel()
+		port, portStr := nextPort()
 		go func() {
-			serverError = engine.Listen(":58730")
+			serverError = engine.Listen(portStr)
 			serverThreadControl.Signal()
 		}()
-		waitForServer(58730)
+		waitForServer(port)
 
 		var result []byte
 		var clientError error
 		clientThreadControl := newWaitingChannel()
 		go func() {
 			clientThreadControl.Signal()
-			result, clientError = test.Request("http://localhost:58730").Get()
+			result, clientError = test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
 			clientThreadControl.Signal()
 		}()
 
@@ -225,5 +237,216 @@ func TestWebEngineShutdown(t *testing.T) {
 		if !errors.Is(serverError, http.ErrServerClosed) {
 			t.Error("Expected server closed return error")
 		}
+	})
+}
+
+func TestWebEngineSimpleUse(t *testing.T) {
+	t.Run("Test successful simple request handling", func(t *testing.T) {
+		var shutdown func() error
+		engine := we.New()
+		engine.HookShutdownFunction(&shutdown)
+		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+			_, _ = w.Write([]byte("success"))
+			return nil
+		})
+
+		port, portStr := nextPort()
+		go engine.Listen(portStr)
+		waitForServer(port)
+
+		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
+		if string(result) != "success" {
+			t.Error("Unexpected response from server")
+		} else if e != nil {
+			t.Error("Expected no client error:", e)
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test custom response code", func(t *testing.T) {
+		var shutdown func() error
+		engine := we.New()
+		engine.HookShutdownFunction(&shutdown)
+		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+			w.WriteHeader(http.StatusTeapot)
+			_, _ = w.Write([]byte("success"))
+			return nil
+		})
+
+		port, portStr := nextPort()
+		go engine.Listen(portStr)
+		waitForServer(port)
+
+		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+		if result.StatusCode != http.StatusTeapot {
+			t.Error("Unexpected response code from server:", result.StatusCode)
+		} else if e != nil {
+			t.Error("Expected no client error:", e)
+		} else if bytes, e := io.ReadAll(result.Body); e != nil {
+			t.Error("Unexpected error reading response body:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Unexpected response from server")
+		}
+
+		_ = shutdown
+	})
+}
+
+func TestWebEngineDefaultErrorHandling(t *testing.T) {
+	t.Run("Test simple application error", func(t *testing.T) {
+		var shutdown func() error
+		engine := we.New()
+		engine.HookShutdownFunction(&shutdown)
+		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+			return fmt.Errorf("applicational error")
+		})
+
+		port, portStr := nextPort()
+		go engine.Listen(portStr)
+		waitForServer(port)
+
+		response, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if response.StatusCode != http.StatusInternalServerError {
+			t.Error("Expected internal server error for unhandled error:", response.StatusCode)
+		} else if bytes, e := io.ReadAll(response.Body); e != nil {
+			t.Error("Unexpected error reading response body:", e)
+		} else if len(bytes) != 0 {
+			t.Error("Expected empty response body for unhandled error", string(bytes))
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test uncaught panic", func(t *testing.T) {
+		var shutdown func() error
+		engine := we.New()
+		engine.HookShutdownFunction(&shutdown)
+		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+			panic("system error")
+		})
+
+		port, portStr := nextPort()
+		go engine.Listen(portStr)
+		waitForServer(port)
+
+		response, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if response.StatusCode != http.StatusInternalServerError {
+			t.Error("Expected internal server error for unhandled error:", response.StatusCode)
+		} else if bytes, e := io.ReadAll(response.Body); e != nil {
+			t.Error("Unexpected error reading response body:", e)
+		} else if len(bytes) != 0 {
+			t.Error("Expected empty response body for unhandled error", string(bytes))
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test we event error handling", func(t *testing.T) {
+		var shutdown func() error
+		engine := we.New()
+		engine.HookShutdownFunction(&shutdown)
+		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+			return events.New(http.StatusTeapot, "we event error")
+		})
+
+		port, portStr := nextPort()
+		go engine.Listen(portStr)
+		waitForServer(port)
+
+		response, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if response.StatusCode != http.StatusTeapot {
+			t.Error("Expected teapot (418) status code:", response.StatusCode)
+		} else if bytes, e := io.ReadAll(response.Body); e != nil {
+			t.Error("Unexpected error reading response body:", e)
+		} else if len(bytes) != 0 {
+			t.Error("Expected empty response body for unhandled error", string(bytes))
+		} else if response.Header.Values("Content-Type") != nil {
+			t.Error("Expected content-type to not be present")
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test we event error handling with payload", func(t *testing.T) {
+		var shutdown func() error
+		engine := we.New()
+		engine.HookShutdownFunction(&shutdown)
+		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+			return events.NewPayload(http.StatusTeapot, "we event error", &events.Payload{ContentTypeHint: "text/plain", Content: []byte("something happened")})
+		})
+
+		port, portStr := nextPort()
+		go engine.Listen(portStr)
+		waitForServer(port)
+
+		response, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if response.StatusCode != http.StatusTeapot {
+			t.Error("Expected teapot (418) status code:", response.StatusCode)
+		} else if bytes, e := io.ReadAll(response.Body); e != nil {
+			t.Error("Unexpected error reading response body:", e)
+		} else if string(bytes) != "something happened" {
+			t.Error("Expected error message to be \"something happened\"", string(bytes))
+		} else if response.Header.Get("Content-Type") != "text/plain" {
+			t.Error("expected error message to be marshalled as text/plain")
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test application error after starting to write response", func(t *testing.T) {
+		var shutdown func() error
+		engine := we.New()
+		engine.HookShutdownFunction(&shutdown)
+		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+			_, _ = w.Write([]byte("success"))
+			return fmt.Errorf("applicational error")
+		})
+
+		port, portStr := nextPort()
+		go engine.Listen(portStr)
+		waitForServer(port)
+
+		response, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if response.StatusCode != http.StatusOK {
+			t.Error("Expected error occurring after response started to be written to get the standard expected successful code:", response.StatusCode)
+		} else if bytes, e := io.ReadAll(response.Body); e != nil {
+			t.Error("Unexpected error reading response body:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected error occurring after ", string(bytes))
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test panic after starting to write response", func(t *testing.T) {
+		var shutdown func() error
+		engine := we.New()
+		engine.HookShutdownFunction(&shutdown)
+		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+			_, _ = w.Write([]byte("success"))
+			panic("applicational error")
+		})
+
+		port, portStr := nextPort()
+		go engine.Listen(portStr)
+		waitForServer(port)
+
+		response, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if response.StatusCode != http.StatusOK {
+			t.Error("Expected error occurring after response started to be written to get the standard expected successful code:", response.StatusCode)
+		} else if bytes, e := io.ReadAll(response.Body); e != nil {
+			t.Error("Unexpected error reading response body:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected error occurring after ", string(bytes))
+		}
+
+		_ = shutdown()
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	err "github.com/gomatbase/go-error"
 )
@@ -93,6 +94,10 @@ func (r *HttpRequest) WithContent(content []byte) *HttpRequest {
 }
 
 func (r *HttpRequest) DoWithResponse(method string) (*http.Response, error) {
+	return r.DoWithTimedOutResponse(0, method)
+}
+
+func (r *HttpRequest) DoWithTimedOutResponse(timeout time.Duration, method string) (*http.Response, error) {
 	if r.e != nil {
 		return nil, r.e
 	}
@@ -105,6 +110,9 @@ func (r *HttpRequest) DoWithResponse(method string) (*http.Response, error) {
 	client := http.Client{}
 	if r.tlsOptions != nil {
 		client.Transport = &http.Transport{TLSClientConfig: r.tlsOptions}
+	}
+	if timeout > 0 {
+		client.Timeout = timeout
 	}
 
 	request.Header = r.header
@@ -126,9 +134,7 @@ func (r *HttpRequest) Do(method string) ([]byte, error) {
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusBadRequest {
 		body, e := io.ReadAll(response.Body)
-		fmt.Println(e)
-		fmt.Println(string(body))
-		return nil, errors.New("failed request")
+		return body, errors.Join(fmt.Errorf("failed request: %v", response.Status), e)
 	}
 
 	body, e := io.ReadAll(response.Body)
