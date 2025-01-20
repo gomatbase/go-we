@@ -57,6 +57,27 @@ func newWaitingChannel() waitingChannel {
 	return make(chan bool, 1)
 }
 
+func newServer() (we.WebEngine, func() error) {
+	var shutdown func() error
+	engine := we.New()
+	engine.HookShutdownFunction(&shutdown)
+	return engine, shutdown
+}
+
+func start(engine we.WebEngine) string {
+	port, portStr := nextPort()
+	go engine.Listen(portStr)
+	waitForServer(port)
+	return portStr
+}
+
+func simpleHandler(response string) func(writer we.ResponseWriter, request we.RequestScope) error {
+	return func(writer we.ResponseWriter, request we.RequestScope) error {
+		_, _ = writer.Write([]byte(response))
+		return nil
+	}
+}
+
 func TestWebEngineShutdown(t *testing.T) {
 	t.Run("Test Shutdown on engine with unmanaged listener", func(t *testing.T) {
 		var shutdown func() error
@@ -242,17 +263,9 @@ func TestWebEngineShutdown(t *testing.T) {
 
 func TestWebEngineSimpleUse(t *testing.T) {
 	t.Run("Test successful simple request handling", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
-			_, _ = w.Write([]byte("success"))
-			return nil
-		})
-
-		port, portStr := nextPort()
-		go engine.Listen(portStr)
-		waitForServer(port)
+		engine, shutdown := newServer()
+		engine.Handle("/", simpleHandler("success"))
+		portStr := start(engine)
 
 		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
 		if string(result) != "success" {
@@ -289,6 +302,175 @@ func TestWebEngineSimpleUse(t *testing.T) {
 		}
 
 		_ = shutdown
+	})
+}
+
+func TestWebEnginePathHandling(t *testing.T) {
+	t.Run("Test plain path handling", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.Handle("/", simpleHandler("success"))
+		engine.Handle("/somewhere", simpleHandler("success2"))
+
+		portStr := start(engine)
+
+		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success2" {
+			t.Error("Expected success handler response", string(bytes))
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected success handler response", string(bytes))
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/somewhere/else", portStr)).Get()
+		if e == nil {
+			t.Error("Expected 404 error")
+		} else if e.Error() != "failed request: 404 Not Found" {
+			t.Error("Expected a 404 response for unhandled path:", e)
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test path with variables handling", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.Handle("/{var}", simpleHandler("success"))
+		engine.Handle("/{var}/somewhere", simpleHandler("success2"))
+
+		portStr := start(engine)
+
+		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected success handler response", string(bytes))
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/something", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected success handler response", string(bytes))
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/something/somewhere", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success2" {
+			t.Error("Expected second success handler response", string(bytes))
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/something/else", portStr)).Get()
+		if e == nil {
+			t.Error("Expected 404 error")
+		} else if e.Error() != "failed request: 404 Not Found" {
+			t.Error("Expected a 404 response for unhandled path:", e)
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test wildcard handling", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.Handle("/*", simpleHandler("success"))
+
+		portStr := start(engine)
+
+		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected success handler response", string(bytes))
+		}
+
+		// explicitly test the root path not being handled by a wildcard. if deciding to change behaviour it will trigger a test update
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
+		if e == nil {
+			t.Error("Expected 404 error")
+		} else if e.Error() != "failed request: 404 Not Found" {
+			t.Error("Expected a 404 response for unhandled path:", e)
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/somewhere/else", portStr)).Get()
+		if e == nil {
+			t.Error("Expected 404 error")
+		} else if e.Error() != "failed request: 404 Not Found" {
+			t.Error("Expected a 404 response for unhandled path:", e)
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test double wildcard handling", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.Handle("/**", simpleHandler("success"))
+
+		portStr := start(engine)
+
+		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected success handler response", string(bytes))
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/somewhere/else", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected success handler response", string(bytes))
+		}
+
+		// explicitly test the root path not being handled by a wildcard. if deciding to change behaviour it will trigger a test update
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
+		if e == nil {
+			t.Error("Expected 404 error")
+		} else if e.Error() != "failed request: 404 Not Found" {
+			t.Error("Expected a 404 response for unhandled path:", e)
+		}
+
+		_ = shutdown()
+	})
+	t.Run("Test path handling precedence", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.Handle("/somewhere/specific", simpleHandler("fixed path"))
+		engine.Handle("/{var}/specific", simpleHandler("variable"))
+		engine.Handle("/*/*", simpleHandler("wildcard"))
+		engine.Handle("/**", simpleHandler("double wildcard"))
+
+		portStr := start(engine)
+
+		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere/specific", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "fixed path" {
+			t.Error("Expected fixed path handler response", string(bytes))
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/something/specific", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "variable" {
+			t.Error("Expected variable handler response", string(bytes))
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/something/random", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "wildcard" {
+			t.Error("Expected wildcard handler response", string(bytes))
+		}
+
+		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/something/random/more", portStr)).Get()
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "double wildcard" {
+			t.Error("Expected double wildcard handler response", string(bytes))
+		}
+
+		_ = shutdown()
 	})
 }
 
@@ -418,7 +600,7 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 		} else if bytes, e := io.ReadAll(response.Body); e != nil {
 			t.Error("Unexpected error reading response body:", e)
 		} else if string(bytes) != "success" {
-			t.Error("Expected error occurring after ", string(bytes))
+			t.Error("Expected error occurring after response success already being sent", string(bytes))
 		}
 
 		_ = shutdown()
@@ -444,7 +626,7 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 		} else if bytes, e := io.ReadAll(response.Body); e != nil {
 			t.Error("Unexpected error reading response body:", e)
 		} else if string(bytes) != "success" {
-			t.Error("Expected error occurring after ", string(bytes))
+			t.Error("Expected panic occurring after response already being sent ", string(bytes))
 		}
 
 		_ = shutdown()
