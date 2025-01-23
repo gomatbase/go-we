@@ -59,7 +59,7 @@ type reverseProxyMtlsFilter struct {
 // If the web engine is being served through tls, the filter will not check for the header by default. If the
 // ReverseProxyMtlsFilter was configured to support both methods (reverse proxy headers as well as tls), it will
 // still try to validate it.
-func (rpmf *reverseProxyMtlsFilter) Filter(header http.Header, scope we.RequestScope) error {
+func (rpmf *reverseProxyMtlsFilter) Filter(_ http.Header, scope we.RequestScope) error {
 	request := scope.Request()
 	tlsConnectionState := request.TLS
 	if request.TLS != nil {

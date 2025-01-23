@@ -70,7 +70,7 @@ func clientCertificate(cn string, ca *x509.Certificate, caKey *rsa.PrivateKey) (
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}
 
-	pk, e := rsa.GenerateKey(rand.Reader, 2048)
+	pk, _ := rsa.GenerateKey(rand.Reader, 2048)
 
 	bytes, e := x509.CreateCertificate(rand.Reader, template, ca, &pk.PublicKey, caKey)
 	if e != nil {
