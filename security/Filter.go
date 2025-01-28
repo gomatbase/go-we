@@ -21,71 +21,39 @@ const (
 // UserAttributeName is the name under which the authenticated user is stored in the request scope
 var UserAttributeName = "WE-SEC-USER"
 
-// UnauthenticatedSecurityFilterBuilder is builder to configure a new security filter. A security filter when created
-// does not have root-level authentication configured and specific path based rules can add authentication specifically
-// for it.
-type UnauthenticatedSecurityFilterBuilder interface {
-	// Authentication will add authentication providers at the root level. The authenticated user will be available for
-	// all path authorizations. As soon as a root-level authentication provider is configured, the builder will
-	// continue to be configured as a root-level authenticated filter, which can add additional authentication providers
-	// at root level.
-	Authentication(...AuthenticationProvider) AuthenticatedSecurityFilterBuilder
+// FilterBuilder is a security filter builder for handy chain configurations.
+type FilterBuilder interface {
+	// Authentication will add root level authentication providers. It can be cumulatively called and will add
+	// authentication providers to the existing list
+	Authentication(...AuthenticationProvider) FilterBuilder
 	// Path will initiate a builder to configure path based security rules applying to all provided paths.
-	Path(paths ...string) UnauthenticatedAuthorizationBuilder
+	Path(paths ...string) PathSecurityRulesBuilder
+	// OnAuthentication will add triggers to be executed when a user is authenticated . The triggers will be executed
+	// in the order they are added.
+	OnAuthentication(triggers ...func(*User, we.RequestScope)) FilterBuilder
 	// Build validates and builds the security filter
 	Build() we.Filter
 }
 
-// AuthenticatedSecurityFilterBuilder is a security filter builder where at least one authentication provider has been
-// defined.
-type AuthenticatedSecurityFilterBuilder interface {
-	// Authentication will add additional root level authentication providers to the already configured list of
-	// authentication providers.
-	Authentication(...AuthenticationProvider) AuthenticatedSecurityFilterBuilder
-	// Path will initiate a builder to configure path based security rules applying to all provided paths.
-	Path(paths ...string) AuthenticatedAuthorizationBuilder
-	// OnAuthentication will add triggers to be executed when a user is authenticated by a root level authentication
-	// provider. The triggers will be executed in the order they are added.
-	OnAuthentication(triggers ...func(*User, we.RequestScope)) AuthenticatedSecurityFilterBuilder
-	// Build validates and builds the security filter
-	Build() we.Filter
-}
-
-// AuthenticatedAuthorizationBuilder configures path based security rules for a security filter having root level
-// authentication provider(s)
-type AuthenticatedAuthorizationBuilder interface {
+// PathSecurityRulesBuilder configures path based security rules for a security filter
+type PathSecurityRulesBuilder interface {
 	// Authorize will configure any authorization rules that should apply to the paths being configured.
-	Authorize(...Authorization) AuthenticatedSecurityFilterBuilder
+	Authorize(...Authorization) FilterBuilder
 	// Anonymous specifies that the paths being configured allow anonymous access. Raises a panic if authentication
 	// is already configured for the paths
-	Anonymous() AuthenticatedSecurityFilterBuilder
+	Anonymous() FilterBuilder
 	// Authentication will add specific authentication providers that can also be used to identify a user accessing the
 	// paths. Raises a panic if anonymous access has already been configured for the paths. The resulting builder will
 	// resume the root level configuration for a root-level authenticated filter.
-	Authentication(...AuthenticationProvider) AuthenticatedAuthorizationBuilder
+	Authentication(...AuthenticationProvider) PathSecurityRulesBuilder
 }
 
-// UnauthenticatedAuthorizationBuilder configures path based security rules for a security filter without root level
-// authentication providers
-type UnauthenticatedAuthorizationBuilder interface {
-	// Authorize will configure any authorization rules that should apply to the paths being configured.
-	Authorize(...Authorization) UnauthenticatedSecurityFilterBuilder
-	// Anonymous specifies that the paths being configured allow anonymous access. Raises a panic if authentication
-	// is already configured for the paths
-	Anonymous() UnauthenticatedSecurityFilterBuilder
-	// Authentication will add specific authentication providers that can also be used to identify a user accessing the
-	// paths. Raises a panic if anonymous access has already been configured for the paths. The resulting builder will
-	// resume the root level configuration for a filter without root-level authentication.
-	Authentication(...AuthenticationProvider) UnauthenticatedAuthorizationBuilder
-}
-
-// filterBuilder is the internal security filter builder implementation. It will be wrapped by authenticated and
-// unauthenticated builder flavours to match the build interfaces.
+// filterBuilder is the internal security filter builder implementation.
 type filterBuilder struct {
 	// list of configured authentication providers
 	authenticationProviders []AuthenticationProvider
 	// list of authorization builders containing the configured authorization rules
-	authorizationBuilders []*authorizationBuilder
+	authorizationBuilders []*pathSecurityRuleBuilder
 	// list of onAuthentication triggers
 	authenticationTriggers []func(*User, we.RequestScope)
 	// if the built security filter should have restricted (non-anonymous) access by default (for any path which is
@@ -93,13 +61,47 @@ type filterBuilder struct {
 	restricted bool
 }
 
-// build validates and builds the security filter according to the provided configuration. A non-valid configuration
+// Authentication adds the configured authentiction providers and converts the builder to an authenticated security filter builder.
+func (fb *filterBuilder) Authentication(providers ...AuthenticationProvider) FilterBuilder {
+	if len(providers) == 0 {
+		panic("no authentication providers provided")
+	}
+
+	if len(fb.authenticationProviders) == 0 {
+		fb.authenticationProviders = providers
+	} else {
+		fb.authenticationProviders = append(fb.authenticationProviders, providers...)
+	}
+	return fb
+}
+
+// Path returns a builder for path based security rules applicable to the given list of paths.
+func (fb *filterBuilder) Path(paths ...string) PathSecurityRulesBuilder {
+	if len(paths) == 0 {
+		panic("a list of paths must be provided")
+	}
+	return &pathSecurityRuleBuilder{
+		filterBuilder: fb,
+		paths:         paths,
+	}
+}
+
+// OnAuthentication adds triggers to be executed when a user is authenticated by a root level authentication provider.
+func (fb *filterBuilder) OnAuthentication(triggers ...func(user *User, scope we.RequestScope)) FilterBuilder {
+	if len(triggers) == 0 {
+		panic("no triggers provided")
+	}
+	fb.authenticationTriggers = append(fb.authenticationTriggers, triggers...)
+	return fb
+}
+
+// Build validates and builds the security filter according to the provided configuration. A non-valid configuration
 // results in a panic as it should be considered a system/use error.
-func (fb *filterBuilder) build() we.Filter {
+func (fb *filterBuilder) Build() we.Filter {
 
 	// If there is no authentication mechanism in place and no authorization rules, the filter is useless
 	if len(fb.authenticationProviders) == 0 && len(fb.authorizationBuilders) == 0 {
-		panic("security filter has no authentication configured")
+		panic("security filter has no authentication or authorization configured")
 	}
 
 	result := &filter{
@@ -124,7 +126,7 @@ func (fb *filterBuilder) build() we.Filter {
 			}
 		} else {
 			result.globalProviders[provider.Realm()] = provider
-			// If the authentication provider requires some self-managed endpoints, they can be added to the list of exclusions
+			// If the authentication provider requires some self-managed endpoints, they can be added to the list of exclusions,
 			// however, these must be unique and will raise an error if there are conflicting paths. If the authentication
 			// provider allows usage of custom endpoints, the authentication provider must configure and report which
 			// endpoints should be handled by it.
@@ -132,7 +134,7 @@ func (fb *filterBuilder) build() we.Filter {
 				if e := result.registeredEndpoints.Add(endpoint, authorizationRules{
 					authenticationProviders: []AuthenticationProvider{provider},
 				}); e != nil {
-					panic("Provider owned endpoint already registered")
+					panic("Provider owned endpoint " + endpoint + " already registered")
 				}
 			}
 		}
@@ -205,7 +207,7 @@ func (fb *filterBuilder) anonymous(paths []string) {
 		fb.authenticationProviders = []AuthenticationProvider{anonymousAuthenticationProvider(paths)}
 
 	} else if provider, isAnonymous := fb.authenticationProviders[0].(*anonymousProvider); !isAnonymous {
-		// if there is already a list of providers, but without an anonymous provider, ad an anonymous provider initialized with the paths
+		// if there is already a list of providers, but without an anonymous provider, add an anonymous provider initialized with the paths
 		fb.authenticationProviders = append([]AuthenticationProvider{anonymousAuthenticationProvider(paths)}, fb.authenticationProviders...)
 
 	} else {
@@ -214,73 +216,8 @@ func (fb *filterBuilder) anonymous(paths []string) {
 	}
 }
 
-// unauthenticatedSecurityFilterBuilder is a wrapper for the filterBuilder to match the UnauthenticatedSecurityFilterBuilder
-type unauthenticatedSecurityFilterBuilder struct {
-	builder *filterBuilder
-}
-
-// Authentication adds the configured authentiction providers and converts the builder to an authenticated security filter builder.
-func (usfb *unauthenticatedSecurityFilterBuilder) Authentication(providers ...AuthenticationProvider) AuthenticatedSecurityFilterBuilder {
-	if len(providers) == 0 {
-		panic("no authentication providers provided")
-	}
-	// An unauthenticated security filter builder may actually have a root level authentication provider which will be
-	// the special case of the anonymous authentication provider. So we either initialize the list of providers with the
-	// given list of providers or add them to the existing list.
-	if len(usfb.builder.authenticationProviders) == 0 {
-		usfb.builder.authenticationProviders = providers
-	} else {
-		usfb.builder.authenticationProviders = append(usfb.builder.authenticationProviders, providers...)
-	}
-	return &authenticatedSecurityFilterBuilder{builder: usfb.builder}
-}
-
-// Path returns a builder for path based security rules applicable to the given list of paths, for an unauthenticated security filter builder.
-func (usfb *unauthenticatedSecurityFilterBuilder) Path(paths ...string) UnauthenticatedAuthorizationBuilder {
-	return &unauthenticatedAuthorizationBuilder{unauthenticatedBuilder: usfb, authorizationBuilder: newAuthorizationBuilder(usfb.builder, paths)}
-}
-
-// Build validates and builds the security filter
-func (usfb *unauthenticatedSecurityFilterBuilder) Build() we.Filter {
-	return usfb.builder.build()
-}
-
-// authenticatedSecurityFilterBuilder is a wrapper for the filterBuilder to match the AuthenticatedSecurityFilterBuilder
-type authenticatedSecurityFilterBuilder struct {
-	builder *filterBuilder
-}
-
-// Authentication adds the configured authentication providers to the existing list of authentication providers
-func (asfb *authenticatedSecurityFilterBuilder) Authentication(providers ...AuthenticationProvider) AuthenticatedSecurityFilterBuilder {
-	if len(providers) == 0 {
-		panic("no authentication providers provided")
-	}
-	// an authenticated security filter builder will always have at least one root level authentication provider
-	asfb.builder.authenticationProviders = append(asfb.builder.authenticationProviders, providers...)
-	return asfb
-}
-
-// OnAuthentication adds triggers to be executed when a user is authenticated by a root level authentication provider.
-func (asfb *authenticatedSecurityFilterBuilder) OnAuthentication(triggers ...func(user *User, scope we.RequestScope)) AuthenticatedSecurityFilterBuilder {
-	if len(triggers) == 0 {
-		panic("no triggers provided")
-	}
-	asfb.builder.authenticationTriggers = append(asfb.builder.authenticationTriggers, triggers...)
-	return asfb
-}
-
-// Path Returns a build to configure path based security rules for the given paths
-func (asfb *authenticatedSecurityFilterBuilder) Path(paths ...string) AuthenticatedAuthorizationBuilder {
-	return &authenticatedAuthorizationBuilder{authenticatedBuilder: asfb, authorizationBuilder: newAuthorizationBuilder(asfb.builder, paths)}
-}
-
-// Build validates and builds the security filter
-func (asfb *authenticatedSecurityFilterBuilder) Build() we.Filter {
-	return asfb.builder.build()
-}
-
-// authorizationBuilder is a builder for configuring authorization rules applicable to a specific list of paths
-type authorizationBuilder struct {
+// pathSecurityRuleBuilder is a builder for configuring authorization rules applicable to a specific list of paths
+type pathSecurityRuleBuilder struct {
 	// the filter builder holding this authorization builder
 	filterBuilder *filterBuilder
 	// List of paths the authorization rules apply to
@@ -291,17 +228,18 @@ type authorizationBuilder struct {
 	providers []AuthenticationProvider
 }
 
-// anonymous configures the paths to allow anonymous access. It fails if authentication has already been configured for the paths.
-func (ab *authorizationBuilder) anonymous() {
+// Anonymous configures the paths to allow anonymous access. It fails if authentication has already been configured for the paths.
+func (ab *pathSecurityRuleBuilder) Anonymous() FilterBuilder {
 	if len(ab.providers) != 0 {
-		panic("anonymous access cannot be configured with authentication")
+		panic("anonymous access cannot be configured with path authentication")
 	}
 	ab.filterBuilder.anonymous(ab.paths)
+	return ab.filterBuilder
 }
 
-// authorize applies the set of authorization rules to apply to the paths. The list of rules are aggregated into a single
+// Authorize applies the set of authorization rules to apply to the paths. The list of rules are aggregated into a single
 // authorization rule of type All which requires all rules to be satisfied.
-func (ab *authorizationBuilder) authorize(authorizations []Authorization) {
+func (ab *pathSecurityRuleBuilder) Authorize(authorizations ...Authorization) FilterBuilder {
 	if len(authorizations) != 0 {
 		if len(authorizations) == 1 {
 			ab.authorization = authorizations[0]
@@ -320,83 +258,27 @@ func (ab *authorizationBuilder) authorize(authorizations []Authorization) {
 		// access to the path requires authentication
 		ab.filterBuilder.authorizationBuilders = append(ab.filterBuilder.authorizationBuilders, ab)
 	}
-
+	return ab.filterBuilder
 }
 
-// authentication adds the given authentication providers to the list of path authentication providers. An empty list raises a panic.
-func (ab *authorizationBuilder) authentication(providers []AuthenticationProvider) {
+// Authentication adds the given authentication providers to the list of path authentication providers. An empty list raises a panic.
+func (ab *pathSecurityRuleBuilder) Authentication(providers ...AuthenticationProvider) PathSecurityRulesBuilder {
 	if len(providers) == 0 {
 		panic("no authentication providers provided")
 	}
-	ab.providers = providers
-}
-
-// newAuthorizationBuilder creates a new authorization builder for the given paths, associating it with the filter builder
-// it refers to. fails if an empty list of paths is given.
-func newAuthorizationBuilder(fb *filterBuilder, paths []string) *authorizationBuilder {
-	if len(paths) == 0 {
-		panic("no paths provided")
+	if len(ab.providers) == 0 {
+		ab.providers = providers
+	} else {
+		ab.providers = append(ab.providers, providers...)
 	}
-	return &authorizationBuilder{filterBuilder: fb, paths: paths}
-}
-
-// authenticatedAuthorizationBuilder is a wrapper for the AuthenticatedAuthorizationBuilder using the underlying common authorization builder
-type authenticatedAuthorizationBuilder struct {
-	// authenticatedBuilder is a link to the authenticated security filter builder from which the path based rules were initiated
-	authenticatedBuilder *authenticatedSecurityFilterBuilder
-	// authorizationBuilder is the wrapped common authorization builder used to configure the authorization rules
-	authorizationBuilder *authorizationBuilder
-}
-
-// Anonymous configures the paths to allow anonymous access. It fails if authentication has already been configured for the paths.
-func (aab *authenticatedAuthorizationBuilder) Anonymous() AuthenticatedSecurityFilterBuilder {
-	aab.authorizationBuilder.anonymous()
-	return aab.authenticatedBuilder
-}
-
-// Authorize invokes authorize() from the wrapped authorizationBuilder
-func (aab *authenticatedAuthorizationBuilder) Authorize(authorizations ...Authorization) AuthenticatedSecurityFilterBuilder {
-	aab.authorizationBuilder.authorize(authorizations)
-	return aab.authenticatedBuilder
-}
-
-// Authentication invokes authentication() from the wrapped authorizationBuilder
-func (aab *authenticatedAuthorizationBuilder) Authentication(providers ...AuthenticationProvider) AuthenticatedAuthorizationBuilder {
-	aab.authorizationBuilder.authentication(providers)
-	return aab
-}
-
-// unauthorizedAuthorizationBuilder is a wrapper for the UnauthenticatedAuthorizationBuilder
-type unauthenticatedAuthorizationBuilder struct {
-	// unauthenticatedBuilder is a link to the unauthenticated security filter builder from which the path based rules were initiated
-	unauthenticatedBuilder *unauthenticatedSecurityFilterBuilder
-	// authorizationBuilder is the wrapped common authorization builder used to configure the authorization rules
-	authorizationBuilder *authorizationBuilder
-}
-
-// Anonymous invokes anonymous() from the wrapped authorizationBuilder
-func (uab *unauthenticatedAuthorizationBuilder) Anonymous() UnauthenticatedSecurityFilterBuilder {
-	uab.authorizationBuilder.anonymous()
-	return uab.unauthenticatedBuilder
-}
-
-// Authorize invokes authorize() from the wrapped authorizationBuilder
-func (uab *unauthenticatedAuthorizationBuilder) Authorize(authorizations ...Authorization) UnauthenticatedSecurityFilterBuilder {
-	uab.authorizationBuilder.authorize(authorizations)
-	return uab.unauthenticatedBuilder
-}
-
-// Authentication invokes authentication() from the wrapped authorizationBuilder
-func (uab *unauthenticatedAuthorizationBuilder) Authentication(providers ...AuthenticationProvider) UnauthenticatedAuthorizationBuilder {
-	uab.authorizationBuilder.authentication(providers)
-	return uab
+	return ab
 }
 
 // Filter creates a new security filter builder to configure a new security filter. It takes a boolean parameter to
 // specify if the filter should have restricted access by default (non-anonymous access to any path not explicitly
 // configured) or not.
-func Filter(restricted bool) UnauthenticatedSecurityFilterBuilder {
-	return &unauthenticatedSecurityFilterBuilder{builder: &filterBuilder{restricted: restricted}}
+func Filter(restricted bool) FilterBuilder {
+	return &filterBuilder{restricted: restricted}
 }
 
 // authorizationRules hold any path specific configuration that will be stored in the pathTree
