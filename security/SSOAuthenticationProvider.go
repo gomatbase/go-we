@@ -192,7 +192,7 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 			delete(sap.otps, otp[0])
 			return user, nil
 		} else {
-			// not found, might be a redresh. Let's remove the otp and redirect to the requested url
+			// not found, might be a refresh. Let's remove the otp and redirect to the requested url
 			q := requestUrl.Query()
 			q.Del("otp")
 			requestUrl.RawQuery = q.Encode()
