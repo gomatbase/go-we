@@ -21,7 +21,7 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
-	err "github.com/gomatbase/go-error"
+	"github.com/gomatbase/csn"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
@@ -30,12 +30,12 @@ const (
 	AuthorizationCodeUrl = "%s?response_type=code%s&client_id=%s&redirect_uri=%s&state=%s"
 	ScopesQueryParameter = "&scope=%s"
 
-	UnsupportedKeyType    = err.ErrorF("unsupported key type: %s")
-	ModulusDecodingError  = err.ErrorF("error decoding key %s modulus: %v")
-	ExponentDecodingError = err.ErrorF("error decoding key %s exponent: %v")
-	NoJwksUriError        = err.ErrorF("unable to refresh. no jwks uri provided")
-	FailedToRefreshJwks   = err.ErrorF("failed to refresh jwks: %v")
-	InvalidClainsError    = err.ErrorF("invalid claims: %s")
+	UnsupportedKeyType    = csn.ErrorF("unsupported key type: %s")
+	ModulusDecodingError  = csn.ErrorF("error decoding key %s modulus: %v")
+	ExponentDecodingError = csn.ErrorF("error decoding key %s exponent: %v")
+	NoJwksUriError        = csn.ErrorF("unable to refresh. no jwks uri provided")
+	FailedToRefreshJwks   = csn.ErrorF("failed to refresh jwks: %v")
+	InvalidClainsError    = csn.ErrorF("invalid claims: %s")
 )
 
 type UserEnrichmentFunction func(*User) (*User, error)

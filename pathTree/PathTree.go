@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	err "github.com/gomatbase/go-error"
+	"github.com/gomatbase/csn"
 )
 
 const (
@@ -20,8 +20,8 @@ const (
 )
 
 const (
-	InvalidPathError  = err.Error("invalid path")
-	ExistingPathError = err.Error("existing path")
+	InvalidPathError  = csn.Error("invalid path")
+	ExistingPathError = csn.Error("existing path")
 )
 
 var (
@@ -329,7 +329,7 @@ func matchSignature[T any](node *treePathNode[T], parts []string, depth int) (*t
 		return node, depth, node.handler != nil
 	}
 
-	// if there are parts, let's match it with the the possible types in existence
+	// if there are parts, let's match it with the possible types in existence
 	name, partType := stripPart(parts[0])
 	var children *[]*treePathNode[T]
 	if partType == VALUE {

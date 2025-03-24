@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"time"
 
-	err "github.com/gomatbase/go-error"
+	"github.com/gomatbase/csn"
 )
 
 var (
-	InvalidUrlError = err.Error("invalid url")
+	InvalidUrlError = csn.Error("invalid url")
 )
 
 type HttpRequest struct {
