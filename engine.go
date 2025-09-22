@@ -37,13 +37,13 @@ type RequestScope interface {
 	// LookupParameters returns all values of a query parameter as Parameters does, but also indicates if in case of an empty value if it's because the parameter was not sent
 	LookupParameters(string) ([]string, bool)
 	// Get returns the value of an attribute set in the request scope
-	Get(string) interface{}
+	Get(string) any
 	// Set sets an attribute in the request scope
-	Set(string, interface{})
+	Set(string, any)
 	// GetFromSession returns the value of an attribute set in the session. Returns nil if sessions are not enabled
-	GetFromSession(string) interface{}
+	GetFromSession(string) any
 	// SetInSession sets an attribute in the session. Does nothing if sessions are not enabled
-	SetInSession(string, interface{})
+	SetInSession(string, any)
 	// HasSession returns true if sessions are enabled
 	HasSession() bool
 }
@@ -53,7 +53,7 @@ type requestScope struct {
 	// the underlying http.Request object
 	request *http.Request
 	// request scope attributes
-	attributes map[string]interface{}
+	attributes map[string]any
 	// path variables extracted from the request
 	variables map[string]string
 	// session object if sessions are enabled
@@ -110,17 +110,17 @@ func (rs *requestScope) LookupParameters(name string) ([]string, bool) {
 }
 
 // Get returns the value of an attribute set in the request scope
-func (rs *requestScope) Get(key string) interface{} {
+func (rs *requestScope) Get(key string) any {
 	return rs.attributes[key]
 }
 
 // Set sets an attribute in the request scope
-func (rs *requestScope) Set(key string, value interface{}) {
+func (rs *requestScope) Set(key string, value any) {
 	rs.attributes[key] = value
 }
 
 // GetFromSession returns the value of an attribute set in the session
-func (rs *requestScope) GetFromSession(key string) interface{} {
+func (rs *requestScope) GetFromSession(key string) any {
 	if rs.session != nil {
 		return rs.session.Attributes[key]
 	}
@@ -128,7 +128,7 @@ func (rs *requestScope) GetFromSession(key string) interface{} {
 }
 
 // SetInSession sets an attribute in the session
-func (rs *requestScope) SetInSession(key string, value interface{}) {
+func (rs *requestScope) SetInSession(key string, value any) {
 	if rs.session != nil {
 		rs.session.Attributes[key] = value
 	}
@@ -357,7 +357,7 @@ func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
 	// request context is always created fresh for an incoming request
 	scope := &requestScope{
 		request:    r,
-		attributes: make(map[string]interface{}),
+		attributes: make(map[string]any),
 	}
 	if wc.sessionManager != nil {
 		scope.session = wc.sessionManager.GetHttpSession(w, r)

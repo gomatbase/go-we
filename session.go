@@ -35,7 +35,7 @@ type Session struct {
 	Id string
 
 	// Payloads stored in the Session. Retrieval and use of context payloads are implementation specific.
-	Attributes map[string]interface{}
+	Attributes map[string]any
 }
 
 // SessionManager manages a Session life-cycle
@@ -101,7 +101,7 @@ func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request)
 		session = &Session{
 			LastUse:    time.Now(),
 			Id:         uuid.New().String(),
-			Attributes: make(map[string]interface{}),
+			Attributes: make(map[string]any),
 		}
 		sm.storage.Put(session)
 		sm.storageMutex.Unlock()

@@ -88,24 +88,24 @@ func (m *mockedRequestScope) LookupParameters(s string) ([]string, bool) {
 	return nil, false
 }
 
-func (m *mockedRequestScope) Get(name string) interface{} {
+func (m *mockedRequestScope) Get(name string) any {
 	return m.attributes[name]
 }
 
-func (m *mockedRequestScope) Set(name string, value interface{}) {
+func (m *mockedRequestScope) Set(name string, value any) {
 	m.attributes[name] = value
 }
 
-func (m *mockedRequestScope) GetFromSession(name string) interface{} {
+func (m *mockedRequestScope) GetFromSession(name string) any {
 	if m.session == nil {
 		return nil
 	}
 	return m.session.Attributes[name]
 }
 
-func (m *mockedRequestScope) SetInSession(name string, value interface{}) {
+func (m *mockedRequestScope) SetInSession(name string, value any) {
 	if m.session == nil {
-		m.session = &we.Session{Attributes: make(map[string]interface{})}
+		m.session = &we.Session{Attributes: make(map[string]any)}
 	}
 	m.session.Attributes[name] = value
 }

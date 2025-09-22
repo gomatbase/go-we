@@ -59,7 +59,7 @@ func TestAddRoutes(t *testing.T) {
 		if registeredHandler == nil {
 			t.Error("Unexpected null handler for root")
 		} else {
-			if registeredHandler == interface{}(handler) {
+			if registeredHandler == any(handler) {
 				t.Error("Unexpected registered handler for root", registeredHandler)
 			} else if len(variables) > 0 {
 				t.Error("Unexpected Path Variables found in endpoint", variables)

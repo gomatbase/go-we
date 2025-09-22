@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-func ReplyJson(w http.ResponseWriter, status int, value interface{}) error {
+func ReplyJson(w http.ResponseWriter, status int, value any) error {
 	if body, e := json.Marshal(value); e == nil {
 		w.Header().Add("Content-type", "application/json")
 		w.WriteHeader(status)
