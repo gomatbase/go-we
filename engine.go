@@ -246,7 +246,9 @@ func (wc *webEngine) HandleMethod(method string, path string, handler HandlerFun
 		tree = pathTree.New[HandlerFunction]()
 		wc.matchTrees[method] = tree
 	}
-	tree.Add(path, handler)
+	if e := tree.Add(path, handler); e != nil {
+		panic(e)
+	}
 }
 
 // AddFilter registers a filter to be applied to all incoming requests. Filters are applied in the order they are registered
