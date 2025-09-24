@@ -26,9 +26,9 @@ const (
 
 var (
 	// Regular expression to validate valid endpoints that can be added to the path tree. It supports standard url
-	// endpoints, path variables identified by {} brackets and standard alpha numeric names, single path node wildcards
+	// endpoints, path variables identified by {} brackets and standard alphanumeric names, single path node wildcards
 	// and multi-node matching wildcards
-	validPathExpression = regexp.MustCompile("^(/|(/(([a-zA-Z0-9_.\\-@~]|%[0-9a-fA-f]{2})+|{[a-zA-Z0-9]+}|\\*\\*?))*/?)$")
+	validPathExpression = regexp.MustCompile("^(/|(/(([a-zA-Z0-9_.\\-@~]|%[0-9a-fA-f]{2})+|{[a-zA-Z0-9\\-_.]+}|\\*\\*?))*/?)$")
 )
 
 // Tree is a Path Tree, holding paths where each path component is a node which may have a value. A node with a value marks
@@ -135,7 +135,7 @@ func stripPart(name string) (string, int) {
 	return name, partType
 }
 
-// Helper function to split the Path variable from the an http.Request in path elements (separated by forward slashes.
+// Helper function to split the Path variable from the http.Request in path elements (separated by forward slashes.
 // The validPathExpression regex will enforce paths with no empty path elements (double forward slashes). The simple
 // splitting process results in similar paths, with identical path elements and differing only in one having a final
 // forward slash while the other does not, to be considered identical.
@@ -345,7 +345,7 @@ func matchSignature[T any](node *treePathNode[T], parts []string, depth int) (*t
 		// needs an exact match
 		for _, child := range *children {
 			if child.value == name {
-				return matchSignature(child, parts[1:], depth+1) // found a match, let's dig through it
+				return matchSignature[T](child, parts[1:], depth+1) // found a match, let's dig through it
 			}
 		}
 	case WILDCARD:
