@@ -63,6 +63,12 @@ func (s Scope) IsAuthorized(user *User, _ we.RequestScope) bool {
 	return false
 }
 
+type Method string
+
+func (s Method) IsAuthorized(_ *User, r we.RequestScope) bool {
+	return r.Request().Method == string(s)
+}
+
 type Realm string
 
 func (r Realm) IsAuthorized(user *User, _ we.RequestScope) bool {
