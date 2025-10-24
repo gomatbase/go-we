@@ -102,10 +102,9 @@ func (rpmf *reverseProxyMtlsFilter) Filter(_ http.Header, scope we.RequestScope)
 	}
 
 	if _, e = certs[0].Verify(verifyOptions); e != nil {
-		if rpmf.ignoreVerificationErrors {
-			return nil
+		if !rpmf.ignoreVerificationErrors {
+			return events.UnauthorizedError
 		}
-		return events.UnauthorizedError
 	}
 
 	tlsConnectionState.PeerCertificates = append(tlsConnectionState.PeerCertificates, certs...)
@@ -181,6 +180,13 @@ func (rpmfb *reverseProxyMtlsFilterBuilder) Build() we.Filter {
 	}
 	if rpmfb.filter.decodingFunc == nil {
 		rpmfb.filter.decodingFunc = PlainHeaderCertDecoding
+	}
+	if rpmfb.filter.cas == nil {
+		var e error
+		rpmfb.filter.cas, e = x509.SystemCertPool()
+		if e != nil {
+			panic(e)
+		}
 	}
 	return rpmfb.filter
 }
