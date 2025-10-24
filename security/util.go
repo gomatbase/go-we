@@ -7,7 +7,7 @@ package security
 import "github.com/gomatbase/go-we"
 
 func GetUser(scope we.RequestScope) *User {
-	if user, isType := scope.GetFromSession(UserAttributeName).(*User); isType {
+	if user, isType := scope.Get(UserAttributeName).(*User); isType {
 		return user
 	}
 	return nil
