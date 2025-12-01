@@ -414,11 +414,6 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 				if authenticatedUser, e := provider.Authenticate(header, scope); e != nil {
 					return e
 				} else if authenticatedUser != nil {
-					if authenticatedUser == Anonymous {
-						// User is authenticated as an anonymous user, meaning it's accessing resources that are public
-						// it wil not be added to the request or session
-						return nil
-					}
 					authenticatedUser.Realm = provider.Realm()
 					user = authenticatedUser
 					break
@@ -443,7 +438,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		}
 	}
 
-	if user != nil {
+	if user != nil && user != Anonymous {
 		scope.Set(UserAttributeName, user)
 		if sessionUser != user {
 			scope.SetInSession(UserAttributeName, user)
