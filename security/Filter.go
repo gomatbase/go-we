@@ -145,6 +145,16 @@ func (fb *filterBuilder) Build() we.Filter {
 		}
 	}
 
+	// check if authentication provider is defined and register anonymous paths to anonymous realm
+	if len(fb.authenticationProviders) > 0 {
+		if provider, isType := fb.authenticationProviders[0].(*anonymousProvider); isType {
+			fb.authorizationBuilders = append(fb.authorizationBuilders, &pathSecurityRuleBuilder{
+				paths:         provider.list,
+				authorization: Authorized(true),
+			})
+		}
+	}
+
 	// If there are any path specific rules to apply, they will be validated beforehand.
 	if fb.authorizationBuilders != nil {
 		result.authorizations = pathTree.New[authorizationRules]()
@@ -252,7 +262,7 @@ func (ab *pathSecurityRuleBuilder) Authorize(authorizations ...Authorization) Fi
 	} else if len(ab.providers) == 0 {
 		// when building a filter, a nil Authorization without path authenticators means that the paths should
 		// be added to the filters anonymous access list of paths
-		ab.filterBuilder.anonymous(ab.paths)
+		return ab.Anonymous()
 	} else {
 		// if at least one authentication provider is configured at the path level and no authorization rules, it means that
 		// access to the path requires authentication
@@ -438,13 +448,16 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		}
 	}
 
-	if user != nil && user != Anonymous {
-		scope.Set(UserAttributeName, user)
-		if sessionUser != user {
-			scope.SetInSession(UserAttributeName, user)
-		}
-		for _, trigger := range f.authenticationTriggers {
-			execute(trigger, user, scope)
+	if user != nil {
+		// an authentication was made as Anonymous, user should not be added to scope but an access is authorized.
+		if user != Anonymous {
+			scope.Set(UserAttributeName, user)
+			if sessionUser != user {
+				scope.SetInSession(UserAttributeName, user)
+			}
+			for _, trigger := range f.authenticationTriggers {
+				execute(trigger, user, scope)
+			}
 		}
 		return nil
 	} else if !f.restricted {

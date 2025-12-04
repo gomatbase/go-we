@@ -80,3 +80,7 @@ type Origin string
 func (o Origin) IsAuthorized(user *User, _ we.RequestScope) bool {
 	return user != nil && user.Origin == string(o)
 }
+
+type Authorized bool
+
+func (a Authorized) IsAuthorized(user *User, _ we.RequestScope) bool { return bool(a) }

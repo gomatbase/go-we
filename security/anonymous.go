@@ -34,14 +34,19 @@ func anonymousAuthenticationProvider(paths []string) *anonymousProvider {
 // so that it takes precedence to any other authentication/authorization means.
 type anonymousProvider struct {
 	paths pathTree.Tree[bool]
+	list  []string
 }
 
 // addPaths will add the given paths to the existing list of paths for anonymous authorization
 func (ap *anonymousProvider) addPaths(paths []string) {
 	for _, path := range paths {
 		// for existing paths it doesn't matter, as it is meant just as ap match. Invalid paths raises panic
-		if e := ap.paths.Add(path, peg); e != nil && e != pathTree.ExistingPathError {
-			panic(e)
+		if e := ap.paths.Add(path, peg); e != nil {
+			if e != pathTree.ExistingPathError {
+				panic(e)
+			}
+		} else {
+			ap.list = append(ap.list, path)
 		}
 	}
 }
