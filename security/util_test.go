@@ -19,14 +19,14 @@ func TestGetUser(t *testing.T) {
 		t.Error("Expected nil user")
 	}
 
-	scope.SetInSession(security.UserAttributeName, new(any))
+	scope.Set(security.UserAttributeName, new(any))
 	user = security.GetUser(scope)
 	if user != nil {
 		t.Error("Expected nil user")
 	}
 
 	sessionUser := &security.User{Username: "username"}
-	scope.SetInSession(security.UserAttributeName, sessionUser)
+	scope.Set(security.UserAttributeName, sessionUser)
 	user = security.GetUser(scope)
 	if user == nil {
 		t.Error("Expected user in session")

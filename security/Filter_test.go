@@ -287,7 +287,7 @@ func TestFilterRootAuthentication(t *testing.T) {
 		headers := make(http.Header)
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
 		if e := filter.Filter(headers, scope); e != nil {
-			t.Errorf("Expected user suceed in authentication, instead got error: %v", e)
+			t.Errorf("Expected user succeed in authentication, instead got error: %v", e)
 		} else if scope.Get(security.UserAttributeName) != nil {
 			t.Error("anonymous users should not be present in the request scope")
 		} else if scope.GetFromSession(security.UserAttributeName) != nil {

@@ -296,8 +296,10 @@ func TestReverseProxyMtlsFilter(t *testing.T) {
 		if e != nil {
 			t.Errorf("Unexpected error with an unverifiable certificate: %v", e)
 		}
-		if scope.Request().TLS != nil {
-			t.Errorf("Expected request TLS connection state to be nil")
+		if scope.Request().TLS == nil {
+			t.Errorf("Expected request TLS connection state to be present")
+		} else if scope.Request().TLS.PeerCertificates[0].Subject.CommonName != "testClient" {
+			t.Errorf("Expected request TLS certificate to have the provided certificate")
 		}
 	})
 	t.Run("Test forwarded client certificate with intermediate", func(t *testing.T) {
