@@ -88,25 +88,25 @@ type MtlsAuthenticationProviderBuilder interface {
 	Build() AuthenticationProvider
 }
 
-// mtlsAutenticationProviderBuilder is an implementation of MtlsAuthenticationProviderBuilder.
-type mtlsAutenticationProviderBuilder struct {
+// mtlsAuthenticationProviderBuilder is an implementation of MtlsAuthenticationProviderBuilder.
+type mtlsAuthenticationProviderBuilder struct {
 	provider *mtlsAuthenticationProvider
 }
 
 // Realm sets the realm for the MTLS authentication provider.
-func (mapb *mtlsAutenticationProviderBuilder) Realm(realm string) MtlsAuthenticationProviderBuilder {
+func (mapb *mtlsAuthenticationProviderBuilder) Realm(realm string) MtlsAuthenticationProviderBuilder {
 	mapb.provider.realm = realm
 	return mapb
 }
 
 // WithCertificateIdExtractor sets the certificate id extractor for the MTLS authentication provider.
-func (mapb *mtlsAutenticationProviderBuilder) WithCertificateIdExtractor(certificateIdExtractor CertificateIdExtractor) MtlsAuthenticationProviderBuilder {
+func (mapb *mtlsAuthenticationProviderBuilder) WithCertificateIdExtractor(certificateIdExtractor CertificateIdExtractor) MtlsAuthenticationProviderBuilder {
 	mapb.provider.certificateIdExtractor = certificateIdExtractor
 	return mapb
 }
 
 // Build validates the mtl authentication provider configuration, using default values for unset attributes.
-func (mapb *mtlsAutenticationProviderBuilder) Build() AuthenticationProvider {
+func (mapb *mtlsAuthenticationProviderBuilder) Build() AuthenticationProvider {
 	if mapb.provider.certificateIdExtractor == nil {
 		mapb.provider.certificateIdExtractor = DefaultCertificateIdExtractor
 	}
@@ -120,5 +120,5 @@ func (mapb *mtlsAutenticationProviderBuilder) Build() AuthenticationProvider {
 
 // MtlsAuthenticationProvider creates a new builder for an MTLS authentication provider.
 func MtlsAuthenticationProvider() MtlsAuthenticationProviderBuilder {
-	return &mtlsAutenticationProviderBuilder{provider: &mtlsAuthenticationProvider{}}
+	return &mtlsAuthenticationProviderBuilder{provider: &mtlsAuthenticationProvider{}}
 }
