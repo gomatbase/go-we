@@ -1,3 +1,7 @@
+// Copyright 2025 GOM. All rights reserved.
+// Since 15/01/2025 By GOM
+// Licensed under MIT License
+
 package test
 
 import (
