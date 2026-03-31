@@ -8,11 +8,6 @@ import (
 	"net/http"
 )
 
-type ResponseWriter interface {
-	http.ResponseWriter
-	isWritten() bool
-}
-
 type responseWriter struct {
 	httpResponseWriter http.ResponseWriter
 	written            bool

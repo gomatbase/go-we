@@ -71,8 +71,8 @@ func start(engine we.WebEngine) string {
 	return portStr
 }
 
-func simpleHandler(response string) func(writer we.ResponseWriter, request we.RequestScope) error {
-	return func(writer we.ResponseWriter, request we.RequestScope) error {
+func simpleHandler(response string) func(writer http.ResponseWriter, request we.RequestScope) error {
+	return func(writer http.ResponseWriter, request we.RequestScope) error {
 		_, _ = writer.Write([]byte(response))
 		return nil
 	}
@@ -102,7 +102,7 @@ func TestWebEngineShutdown(t *testing.T) {
 		engine := we.New()
 		engine.HookShutdownFunction(&shutdown)
 		handlerThreadControl := newWaitingChannel()
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			handlerThreadControl.Wait(time.Second * 10)
 			_, _ = w.Write([]byte("success"))
 			return nil
@@ -157,7 +157,7 @@ func TestWebEngineShutdown(t *testing.T) {
 		engine := we.New()
 		engine.HookGraciousShutdownFunction(&shutdown)
 		handlerThreadControl := newWaitingChannel()
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			handlerThreadControl.Wait(time.Minute)
 			_, _ = w.Write([]byte("success"))
 			return nil
@@ -212,7 +212,7 @@ func TestWebEngineShutdown(t *testing.T) {
 		engine := we.New()
 		engine.HookGraciousShutdownFunction(&shutdown)
 		handlerThreadControl := newWaitingChannel()
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			handlerThreadControl.Wait(time.Minute)
 			time.Sleep(time.Second)
 			_, _ = w.Write([]byte("success"))
@@ -280,7 +280,7 @@ func TestWebEngineSimpleUse(t *testing.T) {
 		var shutdown func() error
 		engine := we.New()
 		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			w.WriteHeader(http.StatusTeapot)
 			_, _ = w.Write([]byte("success"))
 			return nil
@@ -479,7 +479,7 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 		var shutdown func() error
 		engine := we.New()
 		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return fmt.Errorf("applicational error")
 		})
 
@@ -504,7 +504,7 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 		var shutdown func() error
 		engine := we.New()
 		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			panic("system error")
 		})
 
@@ -529,7 +529,7 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 		var shutdown func() error
 		engine := we.New()
 		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return events.New(http.StatusTeapot, "we event error")
 		})
 
@@ -556,7 +556,7 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 		var shutdown func() error
 		engine := we.New()
 		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return events.NewPayload(http.StatusTeapot, "we event error", &events.Payload{ContentTypeHint: "text/plain", Content: []byte("something happened")})
 		})
 
@@ -583,7 +583,7 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 		var shutdown func() error
 		engine := we.New()
 		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			_, _ = w.Write([]byte("success"))
 			return fmt.Errorf("applicational error")
 		})
@@ -609,7 +609,7 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 		var shutdown func() error
 		engine := we.New()
 		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w we.ResponseWriter, r we.RequestScope) error {
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			_, _ = w.Write([]byte("success"))
 			panic("applicational error")
 		})

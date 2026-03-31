@@ -12,7 +12,7 @@ import (
 )
 
 type ErrorHandler interface {
-	HandleError(ResponseWriter, error, RequestScope)
+	HandleError(http.ResponseWriter, error, RequestScope)
 }
 
 type ErrorMarshaller interface {
@@ -40,9 +40,9 @@ type errorHandler struct {
 	weErrorCatalog map[int]ErrorHandler
 }
 
-func (eh *errorHandler) HandleError(w ResponseWriter, err error, scope RequestScope) {
+func (eh *errorHandler) HandleError(w http.ResponseWriter, err error, scope RequestScope) {
 	// first let's see if it's still possible to reply
-	if w.isWritten() {
+	if rw, ok := w.(*responseWriter); ok && rw.isWritten() {
 		fmt.Println("Failed to handle error as writer has already been written to")
 		return
 	}
