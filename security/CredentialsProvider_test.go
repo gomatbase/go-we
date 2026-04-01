@@ -5,6 +5,7 @@
 package security_test
 
 import (
+	"context"
 	"bufio"
 	"crypto/md5"
 	"encoding/base64"
@@ -32,14 +33,14 @@ func TestDefaultCredentialsProvider(t *testing.T) {
 		username := parts[2]
 		password := parts[3]
 
-		if _, e = provider.Authenticate(username, password); e == nil {
+		if _, e = provider.Authenticate(context.Background(), username, password); e == nil {
 			t.Errorf("Error authenticating generated credentials. Username %s authenticated with clear password %s", username, password)
 		}
 
 		md5Sum := md5.Sum([]byte(password))
 		password = base64.StdEncoding.EncodeToString(md5Sum[:])
 
-		if user, e := provider.Authenticate(username, password); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username, password); e != nil {
 			t.Errorf("Error authenticating generated credentials. %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating generated credentials. No user found")
@@ -55,14 +56,14 @@ func TestDefaultCredentialsProvider(t *testing.T) {
 
 		provider := security.DefaultCredentialsProvider(security.User{Username: username, Password: password})
 
-		if _, e := provider.Authenticate(username, password); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username, password); e == nil {
 			t.Errorf("Error authenticating provided credentials. Username %s authenticated with clear password %s", username, password)
 		}
 
 		md5Sum := md5.Sum([]byte(password))
 		password = base64.StdEncoding.EncodeToString(md5Sum[:])
 
-		if user, e := provider.Authenticate(username, password); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username, password); e != nil {
 			t.Errorf("Error authenticating provided credentials. %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating provided credentials. No user found")
@@ -80,11 +81,11 @@ func TestDefaultCredentialsProvider(t *testing.T) {
 
 		provider := security.DefaultCredentialsProvider(security.User{Username: username, Password: digest})
 
-		if _, e := provider.Authenticate(username, password); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username, password); e == nil {
 			t.Errorf("Error authenticating provided digested credentials. Username %s authenticated with clear password %s", username, password)
 		}
 
-		if user, e := provider.Authenticate(username, digest[4:]); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username, digest[4:]); e != nil {
 			t.Errorf("Error authenticating provided digested credentials. %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating provided digested credentials. No user found")
@@ -104,17 +105,17 @@ func TestDefaultCredentialsProvider(t *testing.T) {
 
 		provider := security.DefaultCredentialsProvider(security.User{Username: username1, Password: password1}, security.User{Username: username2, Password: digest})
 
-		if _, e := provider.Authenticate(username1, password1); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username1, password1); e == nil {
 			t.Errorf("Error authenticating multiple credentials. Username %s authenticated with clear password %s", username1, password1)
 		}
-		if _, e := provider.Authenticate(username1, digest[4:]); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username1, digest[4:]); e == nil {
 			t.Errorf("Error authenticating multiple credentials. Username %s authenticated with incorrect password %s", username1, digest[4:])
 		}
 
 		md5Sum = md5.Sum([]byte(password1))
 		password1 = base64.StdEncoding.EncodeToString(md5Sum[:])
 
-		if user, e := provider.Authenticate(username1, password1); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username1, password1); e != nil {
 			t.Errorf("Error authenticating multiple credentials (plain). %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating multiple credentials (plain). No user found")
@@ -122,7 +123,7 @@ func TestDefaultCredentialsProvider(t *testing.T) {
 			t.Errorf("Error authenticating multiple credentials (plain). User found doesn't match username %s vs %s", user.Username, username1)
 		}
 
-		if user, e := provider.Authenticate(username2, digest[4:]); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username2, digest[4:]); e != nil {
 			t.Errorf("Error authenticating multiple credentials (digested). %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating multiple credentials (digested). No user found")
@@ -140,14 +141,14 @@ func TestInMemoryCredentialsProvider(t *testing.T) {
 
 		provider := security.InMemoryCredentialsProvider(security.User{Username: username, Password: password})
 
-		if _, e := provider.Authenticate(username, password); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username, password); e == nil {
 			t.Errorf("Error authenticating provided credentials. Username %s authenticated with clear password %s", username, password)
 		}
 
 		md5Sum := md5.Sum([]byte(password))
 		password = base64.StdEncoding.EncodeToString(md5Sum[:])
 
-		if user, e := provider.Authenticate(username, password); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username, password); e != nil {
 			t.Errorf("Error authenticating provided credentials. %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating provided credentials. No user found")
@@ -165,11 +166,11 @@ func TestInMemoryCredentialsProvider(t *testing.T) {
 
 		provider := security.InMemoryCredentialsProvider(security.User{Username: username, Password: digest})
 
-		if _, e := provider.Authenticate(username, password); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username, password); e == nil {
 			t.Errorf("Error authenticating provided digested credentials. Username %s authenticated with clear password %s", username, password)
 		}
 
-		if user, e := provider.Authenticate(username, digest[4:]); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username, digest[4:]); e != nil {
 			t.Errorf("Error authenticating provided digested credentials. %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating provided digested credentials. No user found")
@@ -189,17 +190,17 @@ func TestInMemoryCredentialsProvider(t *testing.T) {
 
 		provider := security.InMemoryCredentialsProvider(security.User{Username: username1, Password: password1}, security.User{Username: username2, Password: digest})
 
-		if _, e := provider.Authenticate(username1, password1); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username1, password1); e == nil {
 			t.Errorf("Error authenticating multiple credentials. Username %s authenticated with clear password %s", username1, password1)
 		}
-		if _, e := provider.Authenticate(username1, digest[4:]); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username1, digest[4:]); e == nil {
 			t.Errorf("Error authenticating multiple credentials. Username %s authenticated with incorrect password %s", username1, digest[4:])
 		}
 
 		md5Sum = md5.Sum([]byte(password1))
 		password1 = base64.StdEncoding.EncodeToString(md5Sum[:])
 
-		if user, e := provider.Authenticate(username1, password1); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username1, password1); e != nil {
 			t.Errorf("Error authenticating multiple credentials (plain). %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating multiple credentials (plain). No user found")
@@ -207,7 +208,7 @@ func TestInMemoryCredentialsProvider(t *testing.T) {
 			t.Errorf("Error authenticating multiple credentials (plain). User found doesn't match username %s vs %s", user.Username, username1)
 		}
 
-		if user, e := provider.Authenticate(username2, digest[4:]); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username2, digest[4:]); e != nil {
 			t.Errorf("Error authenticating multiple credentials (digested). %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating multiple credentials (digested). No user found")
@@ -228,13 +229,13 @@ func TestInMemoryCredentialsProvider(t *testing.T) {
 		provider := security.InMemoryCredentialsProvider()
 		provider.Add(security.User{Username: username1, Password: password1})
 
-		if _, e := provider.Authenticate(username1, password1); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username1, password1); e == nil {
 			t.Errorf("Error authenticating multiple credentials. Username %s authenticated with clear password %s", username1, password1)
 		}
-		if _, e := provider.Authenticate(username1, digest[4:]); e == nil {
+		if _, e := provider.Authenticate(context.Background(), username1, digest[4:]); e == nil {
 			t.Errorf("Error authenticating multiple credentials. Username %s authenticated with incorrect password %s", username1, digest[4:])
 		}
-		if user, e := provider.Authenticate(username2, digest[4:]); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username2, digest[4:]); e != nil {
 			t.Errorf("Error authenticating multiple credentials. Non existing username returning error %v", e)
 		} else if user != nil {
 			t.Errorf("Error authenticating multiple credentials. Non existing username %s authenticated", username2)
@@ -243,7 +244,7 @@ func TestInMemoryCredentialsProvider(t *testing.T) {
 		md5Sum = md5.Sum([]byte(password1))
 		password1 = base64.StdEncoding.EncodeToString(md5Sum[:])
 
-		if user, e := provider.Authenticate(username1, password1); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username1, password1); e != nil {
 			t.Errorf("Error authenticating multiple credentials (plain). %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating multiple credentials (plain). No user found")
@@ -253,7 +254,7 @@ func TestInMemoryCredentialsProvider(t *testing.T) {
 
 		provider.Add(security.User{Username: username2, Password: digest})
 
-		if user, e := provider.Authenticate(username2, digest[4:]); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username2, digest[4:]); e != nil {
 			t.Errorf("Error authenticating multiple credentials (digested). %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating multiple credentials (digested). No user found")
@@ -283,11 +284,11 @@ func TestInMemoryCredentialsProvider(t *testing.T) {
 			t.Errorf("Error getting existing user. User found doesn't match username %s vs %s", user.Username, username2)
 		}
 
-		if user, e := provider.Authenticate(username1, password1); e != nil {
+		if user, e := provider.Authenticate(context.Background(), username1, password1); e != nil {
 			t.Errorf("Error authenticating deleted credentials. %v", e)
 		} else if user != nil {
 			t.Errorf("Error authenticating deleted credentials. User found : %v", user)
-		} else if user, e = provider.Authenticate(username2, digest[4:]); e != nil {
+		} else if user, e = provider.Authenticate(context.Background(), username2, digest[4:]); e != nil {
 			t.Errorf("Error authenticating existing credentials after deleting other credentials. %v", e)
 		} else if user == nil {
 			t.Error("Error authenticating existing credentials after deleting other credentials. No user found")

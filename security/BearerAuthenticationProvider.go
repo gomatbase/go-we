@@ -5,6 +5,7 @@
 package security
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -17,7 +18,7 @@ const BearerRealm = "Bearer"
 // TokenIntrospector allows introspecting a bearer token and return a user for it.
 // If there are no means to translate the token to a user, an error must be returned.
 type TokenIntrospector interface {
-	Introspect(token string) (*User, error)
+	Introspect(ctx context.Context, token string) (*User, error)
 }
 
 func BearerAuthenticationProvider() BearerAuthenticationProviderBuilder {
@@ -78,7 +79,7 @@ func (bap *bearerAuthenticationProvider) Authenticate(_ http.Header, scope we.Re
 		strings.HasPrefix(strings.ToLower(authorization[:7]), "bearer ") {
 
 		token := authorization[7:]
-		if user, e := bap.tokenIntrospector.Introspect(token); e != nil || user == nil {
+		if user, e := bap.tokenIntrospector.Introspect(scope.GetContext(), token); e != nil || user == nil {
 			return nil, events.UnauthorizedError
 		} else {
 			return user, nil

@@ -260,7 +260,7 @@ func (oipb *openIdIdentityProviderBuilder) Build() BearerAndSsoProvider {
 		oipb.openIdConfigurationEndpoint = "/" + oipb.openIdConfigurationEndpoint
 	}
 
-	request, e := http.NewRequest("GET", oipb.openIdUrl+oipb.openIdConfigurationEndpoint, nil)
+	request, e := http.NewRequestWithContext(context.Background(), "GET", oipb.openIdUrl+oipb.openIdConfigurationEndpoint, nil)
 	if e != nil {
 		// most probably an incorrect configuration endpoint
 		panic(e)
@@ -337,7 +337,7 @@ func (oipb *openIdIdentityProviderBuilder) Build() BearerAndSsoProvider {
 				panic(fmt.Sprintf("invalid jwks endpoint: %s", oipb.provider.openIdConfiguration.JwksUri))
 			}
 		}
-		if e = oipb.provider.refreshJwks(); e != nil {
+		if e = oipb.provider.refreshJwks(context.Background()); e != nil {
 			oipb.provider.canValidate = false
 		}
 	} else if e = oipb.provider.setKeys(oipb.jwks); e != nil {
@@ -398,9 +398,9 @@ func (oip *openIdIdentityProvider) State(request *http.Request) (state string, a
 	return q.Get("state"), q.Get("code")
 }
 
-func (oip *openIdIdentityProvider) ValidateAuthorizationCode(code, replyHandlerUrl string) (user *User, e error) {
+func (oip *openIdIdentityProvider) ValidateAuthorizationCode(ctx context.Context, code, replyHandlerUrl string) (user *User, e error) {
 	b := fmt.Sprintf("grant_type=authorization_code&token_format=%s&client_id=%s%s&code=%s&redirect_uri=%s", oip.authorizationTokenFormat, oip.client, oip.requestScopes, code, replyHandlerUrl)
-	request, e := http.NewRequest("POST", oip.openIdConfiguration.TokenEndpoint,
+	request, e := http.NewRequestWithContext(ctx, "POST", oip.openIdConfiguration.TokenEndpoint,
 		bytes.NewReader([]byte(b)))
 	if e != nil {
 		return nil, e
@@ -416,7 +416,7 @@ func (oip *openIdIdentityProvider) ValidateAuthorizationCode(code, replyHandlerU
 		return nil, e
 	}
 
-	if user, e = oip.Introspect(tokenResponse.AccessToken); e != nil {
+	if user, e = oip.Introspect(ctx, tokenResponse.AccessToken); e != nil {
 		return nil, e
 	} else if oip.userEnrichmentFunction != nil {
 		user, e = oip.userEnrichmentFunction(user)
@@ -438,14 +438,14 @@ func (oip *openIdIdentityProvider) AuthorizationCodeProvider() AuthorizationCode
 	return oip
 }
 
-func (oip *openIdIdentityProvider) isValidJwtToken(token string) (*jwt.Token, error) {
+func (oip *openIdIdentityProvider) isValidJwtToken(ctx context.Context, token string) (*jwt.Token, error) {
 	jwtToken, segments, e := oip.jwtParser.ParseUnverified(token, &jwt.MapClaims{})
 	if e == nil {
 		// it's a valid jwt token, let's verify it
 		key, ok := oip.jwks[jwtToken.Header["kid"].(string)]
 		if !ok {
 			// the key is not cached, let's try to refresh the jwks. if there's an error the keys will simply not be refreshed
-			_ = oip.refreshJwks()
+			_ = oip.refreshJwks(ctx)
 			if key, ok = oip.jwks[jwtToken.Header["kid"].(string)]; !ok {
 				// still not found, let's fail
 				return jwtToken, errors.New("invalid signing key")
@@ -462,11 +462,11 @@ func (oip *openIdIdentityProvider) isValidJwtToken(token string) (*jwt.Token, er
 	return nil, e
 }
 
-func (oip *openIdIdentityProvider) Introspect(token string) (*User, error) {
+func (oip *openIdIdentityProvider) Introspect(ctx context.Context, token string) (*User, error) {
 
 	// if we allow validating the token through the signature, then try to validate the jwt, if not go directly to calling the introspection service.
 	if oip.canValidate {
-		jwtToken, e := oip.isValidJwtToken(token)
+		jwtToken, e := oip.isValidJwtToken(ctx, token)
 		if e == nil {
 			if user, e := oip.claimsMapper(jwtToken.Claims.(*jwt.MapClaims)); e != nil {
 				return nil, e
@@ -485,7 +485,7 @@ func (oip *openIdIdentityProvider) Introspect(token string) (*User, error) {
 
 	// either it's not a jwt, the token is not valid, or we should always introspect.
 	// The endpoint should be already validated and we can ignore the error
-	request, _ := http.NewRequest("POST", oip.introspectionEndpoint, bytes.NewReader([]byte("token="+token)))
+	request, _ := http.NewRequestWithContext(ctx, "POST", oip.introspectionEndpoint, bytes.NewReader([]byte("token="+token)))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response, e := oip.httpClient.Do(request)
 	if e != nil {
@@ -548,14 +548,14 @@ func (oip *openIdIdentityProvider) setKeys(keys []JwKey) error {
 
 // refreshJwks tries to load the keys from the openId server. If it fails it will simply not update the cached keys
 // and if triggered due to a token validation signed by an unknown key, it will end up failing the validation.
-func (oip *openIdIdentityProvider) refreshJwks() error {
+func (oip *openIdIdentityProvider) refreshJwks(ctx context.Context) error {
 	if len(oip.openIdConfiguration.JwksUri) == 0 {
 		return NoJwksUriError
 	}
 
 	jwks := &JwKeys{}
 	// at this stage the url was validated, no need to check for errors
-	request, _ := http.NewRequest("GET", oip.openIdConfiguration.JwksUri, nil)
+	request, _ := http.NewRequestWithContext(ctx, "GET", oip.openIdConfiguration.JwksUri, nil)
 	if response, e := oip.httpClient.Do(request); e != nil {
 		return FailedToRefreshJwks.WithValues(e)
 	} else if response.StatusCode != http.StatusOK {

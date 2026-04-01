@@ -5,6 +5,7 @@
 package security_test
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -553,7 +554,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).
 			Build().TokenIntrospector()
-		if user, e := provider.Introspect(token); e != nil {
+		if user, e := provider.Introspect(context.Background(), token); e != nil {
 			t.Errorf("introspection should not fail with a valid token: %v", e)
 		} else if user == nil {
 			t.Error("introspection should return a user")
@@ -575,7 +576,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).
 			Build().TokenIntrospector()
-		if user, e := provider.Introspect(token); e != nil {
+		if user, e := provider.Introspect(context.Background(), token); e != nil {
 			t.Errorf("introspection should not fail with a valid token: %v", e)
 		} else if user == nil {
 			t.Error("introspection should return a user")
@@ -591,7 +592,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).
 			Build().TokenIntrospector()
-		if user, e := provider.Introspect(token); e == nil {
+		if user, e := provider.Introspect(context.Background(), token); e == nil {
 			t.Errorf("introspection should fail with an unknown signing key")
 		} else if user != nil {
 			t.Error("introspection should not return a user")
@@ -602,7 +603,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).Jwks([]security.JwKey{jwKey}).
 			Build().TokenIntrospector()
-		if user, e := provider.Introspect(token); e != nil {
+		if user, e := provider.Introspect(context.Background(), token); e != nil {
 			t.Errorf("introspection should not fail with a valid token: %v", e)
 		} else if user == nil {
 			t.Error("introspection should return a user")
@@ -615,7 +616,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 		provider := security.OpenIdIdentityProvider("https://" + server.Listener.Addr().String()).
 			Tls(tlsConfig).Jwks([]security.JwKey{jwKey}).
 			Build().TokenIntrospector()
-		if user, e := provider.Introspect(token + "="); e == nil {
+		if user, e := provider.Introspect(context.Background(), token + "="); e == nil {
 			t.Error("introspection should fail with an invalid signature")
 		} else if user != nil {
 			t.Error("introspection should not return a user")
@@ -644,7 +645,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 			TokenId:    "124123",
 		})
 		h.mock("/introspect", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: introspection})
-		if user, e := provider.Introspect(token); e != nil {
+		if user, e := provider.Introspect(context.Background(), token); e != nil {
 			t.Errorf("introspection should not fail with a valid token: %v", e)
 		} else if user == nil {
 			t.Error("introspection should return a user")
@@ -676,7 +677,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 			TokenId:    "124123",
 		})
 		h.mock("/introspect", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: introspection})
-		if user, e := provider.Introspect("something"); e != nil {
+		if user, e := provider.Introspect(context.Background(), "something"); e != nil {
 			t.Errorf("introspection should not fail with a valid token: %v", e)
 		} else if user == nil {
 			t.Error("introspection should return a user")
@@ -693,7 +694,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 		provider := security.OpenIdIdentityProvider("https://"+server.Listener.Addr().String()).
 			Tls(tlsConfig).Client("client", "secret").
 			Build().TokenIntrospector()
-		if user, e := provider.Introspect("something"); e == nil {
+		if user, e := provider.Introspect(context.Background(), "something"); e == nil {
 			t.Error("introspection should fail with an inactive token")
 		} else if user != nil {
 			t.Error("introspection should not return a user")
@@ -707,7 +708,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 			Tls(tlsConfig).Client("client", "secret").
 			Build().TokenIntrospector()
 		h.mock("/introspect", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: []byte("invalid json")})
-		if user, e := provider.Introspect("something"); e == nil {
+		if user, e := provider.Introspect(context.Background(), "something"); e == nil {
 			t.Error("introspection should fail with an inactive token")
 		} else if user != nil {
 			t.Error("introspection should not return a user")
@@ -735,7 +736,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 			TokenId:    "124123",
 		})
 		h.mock("/introspect", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: introspection})
-		if user, e := provider.Introspect("something"); e == nil {
+		if user, e := provider.Introspect(context.Background(), "something"); e == nil {
 			t.Error("introspection should fail with an inactive token")
 		} else if user != nil {
 			t.Error("introspection should not return a user")
@@ -766,7 +767,7 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 			TokenId:    "124123",
 		})
 		h.mock("/introspect", &mockedHandler{status: http.StatusOK, mimeType: "application/json", body: introspection})
-		if user, e := provider.Introspect(token); e != nil {
+		if user, e := provider.Introspect(context.Background(), token); e != nil {
 			t.Errorf("introspection should not fail with a valid token: %v", e)
 		} else if user == nil {
 			t.Error("introspection should return a user")

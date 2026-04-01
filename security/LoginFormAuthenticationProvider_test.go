@@ -5,6 +5,7 @@
 package security_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
@@ -22,7 +23,7 @@ func (dcp *dummyCredentialsProvider) Get(_ string) *security.User {
 	return security.Anonymous
 }
 
-func (dcp *dummyCredentialsProvider) Authenticate(_, _ string) (*security.User, error) {
+func (dcp *dummyCredentialsProvider) Authenticate(_ context.Context, _, _ string) (*security.User, error) {
 	return security.Anonymous, nil
 }
 func (dcp *dummyCredentialsProvider) IsValid(_ string) bool {

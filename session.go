@@ -5,6 +5,7 @@
 package we
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -48,13 +49,13 @@ type SessionManager interface {
 // SessionStorage interface for a session storage service
 type SessionStorage interface {
 	// Get retrieves a session by its session id. nil if none is found
-	Get(sessionId string) *Session
+	Get(ctx context.Context, sessionId string) *Session
 	// Put stores/updates a session object, returns the existing object if updating or nil if new
-	Put(session *Session) *Session
+	Put(ctx context.Context, session *Session) *Session
 	// Delete deletes a session object referenced by its id. Return nil if no session is deleted.
-	Delete(sessionId string) *Session
+	Delete(ctx context.Context, sessionId string) *Session
 	// PurgeOlderThan deletes from storage all sessions older than <age>
-	PurgeOlderThan(age time.Duration)
+	PurgeOlderThan(ctx context.Context, age time.Duration)
 }
 
 // SessionManagerConfiguration Configuration settings for the default session manager
@@ -87,9 +88,9 @@ func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request)
 	sessionId, cookieFetchError := r.Cookie(sm.cookieName)
 	if cookieFetchError != http.ErrNoCookie {
 		sm.storageMutex.Lock()
-		if session = sm.storage.Get(sessionId.Value); session != nil {
+		if session = sm.storage.Get(r.Context(), sessionId.Value); session != nil {
 			if session.LastUse.Add(sm.timeout).Before(time.Now()) {
-				sm.storage.Delete(session.Id)
+				sm.storage.Delete(r.Context(), session.Id)
 				session = nil
 			}
 		}
@@ -103,7 +104,7 @@ func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request)
 			Id:         uuid.New().String(),
 			Attributes: make(map[string]any),
 		}
-		sm.storage.Put(session)
+		sm.storage.Put(r.Context(), session)
 		sm.storageMutex.Unlock()
 		http.SetCookie(w, &http.Cookie{Name: sm.cookieName, Value: session.Id, Path: "/"})
 	}
@@ -117,7 +118,7 @@ func (sm *sessionManager) purgeLoop(interval time.Duration) {
 	for {
 		<-ticker.C
 		sm.storageMutex.Lock()
-		sm.storage.PurgeOlderThan(sm.timeout)
+		sm.storage.PurgeOlderThan(context.Background(), sm.timeout)
 		sm.storageMutex.Unlock()
 	}
 }
@@ -127,7 +128,7 @@ type inMemorySessionStorage struct {
 	sessions map[string]*Session
 }
 
-func (imss *inMemorySessionStorage) PurgeOlderThan(age time.Duration) {
+func (imss *inMemorySessionStorage) PurgeOlderThan(_ context.Context, age time.Duration) {
 	for id, session := range imss.sessions {
 		if session.LastUse.Add(age).Before(time.Now()) {
 			delete(imss.sessions, id)
@@ -135,7 +136,7 @@ func (imss *inMemorySessionStorage) PurgeOlderThan(age time.Duration) {
 	}
 }
 
-func (imss *inMemorySessionStorage) Put(session *Session) *Session {
+func (imss *inMemorySessionStorage) Put(_ context.Context, session *Session) *Session {
 	existingSession, found := imss.sessions[session.Id]
 	imss.sessions[session.Id] = session
 	if found {
@@ -144,13 +145,13 @@ func (imss *inMemorySessionStorage) Put(session *Session) *Session {
 	return nil
 }
 
-func (imss *inMemorySessionStorage) Delete(sessionId string) *Session {
+func (imss *inMemorySessionStorage) Delete(_ context.Context, sessionId string) *Session {
 	existingSession := imss.sessions[sessionId]
 	delete(imss.sessions, sessionId)
 	return existingSession
 }
 
-func (imss *inMemorySessionStorage) Get(sessionId string) *Session {
+func (imss *inMemorySessionStorage) Get(_ context.Context, sessionId string) *Session {
 	return imss.sessions[sessionId]
 }
 

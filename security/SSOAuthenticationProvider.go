@@ -5,6 +5,7 @@
 package security
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -24,7 +25,7 @@ const (
 type AuthorizationCodeProvider interface {
 	AuthorizationUrl(replyHandlerUrl, state string) string
 	State(*http.Request) (state string, accessCode string)
-	ValidateAuthorizationCode(code, replyHandlerUrl string) (*User, error)
+	ValidateAuthorizationCode(ctx context.Context, code, replyHandlerUrl string) (*User, error)
 }
 
 type SSOAuthenticationProviderBuilder interface {
@@ -163,7 +164,7 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 		} else {
 			delete(sap.authorizationRequests, requestId)
 
-			if user, e := sap.authorizationCodeProvider.ValidateAuthorizationCode(authorizationCode, sap.redirectUrl(request)); e != nil {
+			if user, e := sap.authorizationCodeProvider.ValidateAuthorizationCode(scope.GetContext(), authorizationCode, sap.redirectUrl(request)); e != nil {
 				return nil, events.UnauthorizedError
 			} else if user == nil {
 				return nil, events.UnauthorizedError

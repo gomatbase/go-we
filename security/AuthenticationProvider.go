@@ -17,6 +17,7 @@ type AuthenticationProvider interface {
 	// the information required to authenticate it. If none of the required attributes are present in the request, then the
 	// provider should return a nil user and no error. If the request does have authentication credentials, and they
 	// cannot be validated, then it should return an error. Successful authentication returns a user object and no error.
+	// When calling external resources (databases, APIs, etc.), use scope.GetContext() to respect request cancellation and timeouts.
 	Authenticate(headers http.Header, scope we.RequestScope) (*User, error)
 	// Realm returns the provider authentication realm. Each provider should authenticate users for a distinct realm
 	// within the same application. This realm is used to identify the authentication provider when checking if the user

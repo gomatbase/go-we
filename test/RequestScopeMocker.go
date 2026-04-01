@@ -6,6 +6,7 @@ package test
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/url"
@@ -49,6 +50,10 @@ func (m *mockedRequestScope) HasSession() bool {
 
 func (m *mockedRequestScope) Request() *http.Request {
 	return m.request
+}
+
+func (m *mockedRequestScope) GetContext() context.Context {
+	return m.request.Context()
 }
 
 func (m *mockedRequestScope) Var(name string) string {

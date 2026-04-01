@@ -5,6 +5,7 @@
 package security_test
 
 import (
+	"context"
 	"encoding/base64"
 	"testing"
 
@@ -18,7 +19,7 @@ type dummyIntrospector struct {
 	e    error
 }
 
-func (di *dummyIntrospector) Introspect(_ string) (*security.User, error) {
+func (di *dummyIntrospector) Introspect(_ context.Context, _ string) (*security.User, error) {
 	return di.user, di.e
 }
 

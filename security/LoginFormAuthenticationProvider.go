@@ -211,7 +211,7 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 			password := request.PostForm.Get(lfap.loginFormConfiguration.PasswordField)
 
 			md5Sum := md5.Sum([]byte(password))
-			if user, e := lfap.credentialsProvider.Authenticate(username, base64.StdEncoding.EncodeToString(md5Sum[:])); e != nil {
+			if user, e := lfap.credentialsProvider.Authenticate(scope.GetContext(), username, base64.StdEncoding.EncodeToString(md5Sum[:])); e != nil {
 				return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate(e.Error(), request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
 			} else if user == nil {
 				return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate("Invalid credentials", request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
