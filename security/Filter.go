@@ -410,7 +410,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 			// authentication at root-level may still be attempted.
 			if e != nil {
 				// The user simply is not authorized.
-				if e == events.UnauthorizedError {
+				if events.UnauthorizedError.Is(e) {
 					sendChallenges(header, f.challenges)
 				}
 				// Any other error is considered a failed authentication attempt
@@ -437,7 +437,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		if authorization, _ := f.authorizations.Get(scope.Request().URL.Path); authorization != nil {
 			var e error
 			if user, e = (*authorization).IsAuthorized(header, user, scope); e != nil {
-				if e == events.UnauthorizedError {
+				if events.UnauthorizedError.Is(e) {
 					sendChallenges(header, authorization.challenges)
 					sendChallenges(header, f.challenges)
 				}
