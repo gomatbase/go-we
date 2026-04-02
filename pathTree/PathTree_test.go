@@ -170,4 +170,146 @@ func TestAddRoutes(t *testing.T) {
 		}
 	})
 
+	t.Run("Test single wildcard matches root", func(t *testing.T) {
+		tree := New[string]()
+		handler := "wildcard-handler"
+
+		if err := tree.Add("/*", handler); err != nil {
+			t.Error("Not able to add wildcard handler", err)
+		}
+
+		// Single wildcard should match root path
+		result, variables := tree.Get("/")
+		if result == nil {
+			t.Error("Wildcard /* should match root path /")
+		} else if *result != handler {
+			t.Errorf("Expected handler %s, got %s", handler, *result)
+		} else if len(variables) != 0 {
+			t.Error("Unexpected variables for wildcard match", variables)
+		}
+
+		// Single wildcard should match single-level paths
+		result, _ = tree.Get("/api")
+		if result == nil {
+			t.Error("Wildcard /* should match /api")
+		}
+
+		// Single wildcard should NOT match multi-level paths
+		result, _ = tree.Get("/api/users")
+		if result != nil {
+			t.Error("Wildcard /* should NOT match /api/users")
+		}
+	})
+
+	t.Run("Test double wildcard matches root", func(t *testing.T) {
+		tree := New[string]()
+		handler := "double-wildcard-handler"
+
+		if err := tree.Add("/**", handler); err != nil {
+			t.Error("Not able to add double wildcard handler", err)
+		}
+
+		// Double wildcard should match root path
+		result, variables := tree.Get("/")
+		if result == nil {
+			t.Error("Double wildcard /** should match root path /")
+		} else if *result != handler {
+			t.Errorf("Expected handler %s, got %s", handler, *result)
+		} else if len(variables) != 0 {
+			t.Error("Unexpected variables for double wildcard match", variables)
+		}
+
+		// Double wildcard should match all paths
+		testPaths := []string{"/api", "/api/users", "/api/users/123"}
+		for _, path := range testPaths {
+			result, _ = tree.Get(path)
+			if result == nil {
+				t.Errorf("Double wildcard /** should match %s", path)
+			}
+		}
+	})
+
+	t.Run("Test wildcard precedence with root", func(t *testing.T) {
+		tree := New[string]()
+		rootHandler := "root-exact"
+		wildcardHandler := "wildcard"
+		doubleWildcardHandler := "double-wildcard"
+
+		// Add in reverse precedence order to ensure order doesn't matter
+		if err := tree.Add("/**", doubleWildcardHandler); err != nil {
+			t.Error("Failed to add /**", err)
+		}
+		if err := tree.Add("/*", wildcardHandler); err != nil {
+			t.Error("Failed to add /*", err)
+		}
+		if err := tree.Add("/", rootHandler); err != nil {
+			t.Error("Failed to add /", err)
+		}
+
+		// Exact match should win for root
+		result, _ := tree.Get("/")
+		if result == nil {
+			t.Error("Expected match for /")
+		} else if *result != rootHandler {
+			t.Errorf("Expected exact match %s for /, got %s", rootHandler, *result)
+		}
+
+		// Single wildcard should win for single-level paths
+		result, _ = tree.Get("/api")
+		if result == nil {
+			t.Error("Expected match for /api")
+		} else if *result != wildcardHandler {
+			t.Errorf("Expected wildcard match %s for /api, got %s", wildcardHandler, *result)
+		}
+
+		// Double wildcard should match multi-level paths
+		result, _ = tree.Get("/api/users")
+		if result == nil {
+			t.Error("Expected match for /api/users")
+		} else if *result != doubleWildcardHandler {
+			t.Errorf("Expected double wildcard match %s for /api/users, got %s", doubleWildcardHandler, *result)
+		}
+	})
+
+	t.Run("Test wildcard with specific paths", func(t *testing.T) {
+		tree := New[string]()
+		apiExactHandler := "api-exact"
+		apiWildcardHandler := "api-wildcard"
+		doubleWildcardHandler := "double-wildcard"
+
+		tree.Add("/**", doubleWildcardHandler)
+		tree.Add("/api", apiExactHandler)
+		tree.Add("/api/*", apiWildcardHandler)
+
+		// Root should match double wildcard
+		result, _ := tree.Get("/")
+		if result == nil || *result != doubleWildcardHandler {
+			t.Error("Expected /** to match /")
+		}
+
+		// /api should match exact
+		result, _ = tree.Get("/api")
+		if result == nil || *result != apiExactHandler {
+			t.Error("Expected /api exact match")
+		}
+
+		// /api/users should match /api/*
+		result, _ = tree.Get("/api/users")
+		if result == nil || *result != apiWildcardHandler {
+			t.Error("Expected /api/* to match /api/users")
+		}
+
+		// /api/users/123 should match /**
+		result, _ = tree.Get("/api/users/123")
+		if result == nil || *result != doubleWildcardHandler {
+			t.Error("Expected /** to match /api/users/123")
+		}
+
+		// /other should match /**
+		result, _ = tree.Get("/other")
+		if result == nil || *result != doubleWildcardHandler {
+			t.Error("Expected /** to match /other")
+		}
+	})
+
 }

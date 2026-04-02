@@ -316,7 +316,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 	t.Run("Test unauthenticated call to unrestricted path", func(t *testing.T) {
 		provider := &dummyProvider{realm: "realm"}
 		filter := security.Filter(security.DefaultAnonymousAccess).
-			Path("/*").Authentication(provider).Authorize().
+			Path("/api/*").Authentication(provider).Authorize().
 			Build()
 		headers := make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e != nil {
@@ -326,7 +326,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 	t.Run("Test unauthenticated call to restricted path without challenges", func(t *testing.T) {
 		provider := &dummyProvider{realm: "realm"}
 		filter := security.Filter(security.DefaultAnonymousAccess).
-			Path("/", "/*").Authentication(provider).Authorize().
+			Path("/*").Authentication(provider).Authorize().
 			Build()
 		headers := make(http.Header)
 		if e := filter.Filter(headers, test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")); e == nil {

@@ -173,13 +173,23 @@ func (tree *pathTree[T]) Get(path string) (handler *T, variables map[string]stri
 // wildcards and finally with double wildcards.
 func matchPathAndVariables[T any](node *treePathNode[T], parts []string, variables map[string]string) *treePathNode[T] {
 
-	// there are no more parts in the path, we return the current node if it has a handler
+	// there are no more parts in the path, check for handlers in order of precedence
 	if len(parts) == 0 {
+		// First check if current node has a handler (exact match has highest precedence)
 		if node.handler != nil {
 			return node
 		}
-		// if there is no handler for the node, since there are no more element paths, the search down this
-		// branch ends without a match
+		// Then check single wildcard (/* should match root /)
+		// The wildcard node is a CHILD of the current node, and we directly return it if it has a handler
+		if node.wildCard != nil && node.wildCard.handler != nil {
+			return node.wildCard
+		}
+		// Finally check double wildcard (/** should match root /)
+		// The double wildcard node is a CHILD of the current node, and we directly return it if it has a handler
+		if node.doubleWildcard != nil && node.doubleWildcard.handler != nil {
+			return node.doubleWildcard
+		}
+		// No handler found for this path
 		return nil
 	}
 

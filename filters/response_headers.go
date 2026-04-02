@@ -377,10 +377,7 @@ func (rb *responseHeadersBuilder) Build() we.Filter {
 		pathTree: pathTree.New[*headerConfig](),
 	}
 
-	// Add default config at / and /** to match all paths (/** doesn't match root /)
-	if err := filter.pathTree.Add("/", rb.defaultConfig); err != nil {
-		panic("failed to add default response headers config at /: " + err.Error())
-	}
+	// Add default config at /** to match all paths (including root /)
 	if err := filter.pathTree.Add("/**", rb.defaultConfig); err != nil {
 		panic("failed to add default response headers config at  /**: " + err.Error())
 	}

@@ -386,12 +386,12 @@ func TestWebEnginePathHandling(t *testing.T) {
 			t.Error("Expected success handler response", string(bytes))
 		}
 
-		// explicitly test the root path not being handled by a wildcard. if deciding to change behaviour it will trigger a test update
+		// single wildcard now matches root path
 		bytes, e = test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
-		if e == nil {
-			t.Error("Expected 404 error")
-		} else if e.Error() != "failed request: 404 Not Found" {
-			t.Error("Expected a 404 response for unhandled path:", e)
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected success handler response for root path", string(bytes))
 		}
 
 		bytes, e = test.Request(fmt.Sprintf("http://localhost%s/somewhere/else", portStr)).Get()
@@ -420,15 +420,15 @@ func TestWebEnginePathHandling(t *testing.T) {
 		if e != nil {
 			t.Error("Unexpected call error:", e)
 		} else if string(bytes) != "success" {
-			t.Error("Expected success handler response", string(bytes))
+			t.Error("Expected success handler response for multi-segment path", string(bytes))
 		}
 
-		// explicitly test the root path not being handled by a wildcard. if deciding to change behaviour it will trigger a test update
+		// double wildcard now matches root path
 		bytes, e = test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
-		if e == nil {
-			t.Error("Expected 404 error")
-		} else if e.Error() != "failed request: 404 Not Found" {
-			t.Error("Expected a 404 response for unhandled path:", e)
+		if e != nil {
+			t.Error("Unexpected call error:", e)
+		} else if string(bytes) != "success" {
+			t.Error("Expected success handler response for root path", string(bytes))
 		}
 
 		_ = shutdown()
