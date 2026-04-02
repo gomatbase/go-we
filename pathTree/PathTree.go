@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	VALUE = iota
-	PATH_VARIABLE
-	WILDCARD
-	DOUBLE_WILDCARD
-	PATH_PART
+	value = iota
+	pathVariable
+	wildcard
+	doubleWildcard
+	pathPart
 )
 
 const (
@@ -108,16 +108,16 @@ func New[T any]() Tree[T] {
 
 // processes a path element for use as tree node value, stripping curly brackets from path variable elements so the
 // variable name can be used as the node value, and returns the type of path element the name parameter represents
-// (VALUE, PATH_VARIABLE, WILDCARD or DOUBLE_WILDCARD)
+// (value, pathVariable, wildcard or doubleWildcard)
 func stripPart(name string) (string, int) {
 	firstCharacter := name[0]
-	partType := VALUE
+	partType := value
 
 	// based on the valid path values that the path tree accepts (enforced through through the validPathExpression
 	// regex, if the name starts with a curly bracket it can only be a path variable, and the regex enforces that in
 	// such cases the last character will be a right side curly bracket. No additional checks are required.
 	if firstCharacter == '{' {
-		return name[1 : len(name)-1], PATH_VARIABLE
+		return name[1 : len(name)-1], pathVariable
 	}
 
 	// The validPathExpression regex also enforces that if a wildcard is present as a path element, it will always be
@@ -126,9 +126,9 @@ func stripPart(name string) (string, int) {
 	// double wildcard type
 	if firstCharacter == '*' {
 		if len(name) == 1 {
-			partType = WILDCARD
+			partType = wildcard
 		} else {
-			partType = DOUBLE_WILDCARD
+			partType = doubleWildcard
 		}
 	}
 
@@ -267,14 +267,14 @@ func (tree *pathTree[T]) Add(path string, handler T) error {
 		name, partType := stripPart(part)
 		child := newTreeNode[T](name)
 		switch partType {
-		case VALUE:
+		case value:
 			insertionPoint.children = append(insertionPoint.children, child)
-		case PATH_VARIABLE:
+		case pathVariable:
 			child.pathVariable = true
 			insertionPoint.variables = append(insertionPoint.variables, child)
-		case WILDCARD:
+		case wildcard:
 			insertionPoint.wildCard = child
-		case DOUBLE_WILDCARD:
+		case doubleWildcard:
 			insertionPoint.doubleWildcard = child
 		}
 		insertionPoint = child
@@ -342,28 +342,28 @@ func matchSignature[T any](node *treePathNode[T], parts []string, depth int) (*t
 	// if there are parts, let's match it with the possible types in existence
 	name, partType := stripPart(parts[0])
 	var children *[]*treePathNode[T]
-	if partType == VALUE {
+	if partType == value {
 		children = &node.children
-		partType = PATH_PART
-	} else if partType == PATH_VARIABLE {
+		partType = pathPart
+	} else if partType == pathVariable {
 		children = &node.variables
-		partType = PATH_PART
+		partType = pathPart
 	}
 
 	switch partType {
-	case PATH_PART:
+	case pathPart:
 		// needs an exact match
 		for _, child := range *children {
 			if child.value == name {
 				return matchSignature[T](child, parts[1:], depth+1) // found a match, let's dig through it
 			}
 		}
-	case WILDCARD:
+	case wildcard:
 		// it's a wildcard, if there is no wildcard, return the node as insertion point, if there is, match through the branch
 		if node.wildCard != nil {
 			return matchSignature(node.wildCard, parts[1:], depth+1)
 		}
-	case DOUBLE_WILDCARD:
+	case doubleWildcard:
 		// as in wildcard, match the branch if there is one, or it's not found and the current node is the insertion point
 		if node.doubleWildcard != nil {
 			return matchSignature(node.doubleWildcard, parts[1:], depth+1)
