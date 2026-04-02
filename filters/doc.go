@@ -130,5 +130,252 @@ Restrict to specific origins with credentials:
 		Build()
 
 See the package examples for more detailed usage scenarios.
+
+# ResponseHeaders Filter
+
+The ResponseHeaders filter provides a secure and flexible way to add HTTP response
+headers to your application. It includes secure defaults for common security headers
+and allows full customization for any header.
+
+# Secure Defaults
+
+By default, the filter automatically applies two essential security headers:
+
+  - X-Content-Type-Options: nosniff (prevents MIME-type sniffing)
+  - X-Frame-Options: SAMEORIGIN (prevents clickjacking)
+
+These defaults are applied automatically when you build the filter without explicitly
+configuring them, providing a secure baseline for your application.
+
+# Basic Usage
+
+The simplest configuration relies on secure defaults:
+
+	filter := filters.ResponseHeaders().Build()
+	engine.AddFilter(filter)
+
+This automatically adds the two default security headers to all responses.
+
+# Security Headers
+
+The filter provides convenient methods for common security headers:
+
+	filter := filters.ResponseHeaders().
+		// Explicitly set NoSniff (enabled by default)
+		NoSniff().
+		// Set frame options (default is SAMEORIGIN)
+		FrameOptions(filters.FrameOptionDeny).
+		// Add HTTP Strict Transport Security
+		HSTS(31536000, true, false).  // maxAge, includeSubDomains, preload
+		// Set Content Security Policy
+		CSP("default-src 'self'; script-src 'self' 'unsafe-inline'").
+		// Set Referrer Policy
+		ReferrerPolicy(ReferrerPolicyStrictOriginWhenCrossOrigin).
+		// Set Permissions Policy
+		PermissionsPolicy("geolocation=(), camera=()").
+		// Cross-Origin Embedder Policy
+		COEP(COEPRequireCorp).
+		// Cross-Origin Opener Policy
+		COOP(COOPSameOrigin).
+		// Cross-Origin Resource Policy
+		CORP(CORPSameSite).
+		Build()
+
+	engine.AddFilter(filter)
+
+# HSTS Special Handling
+
+The HSTS (HTTP Strict Transport Security) header is only sent over HTTPS connections.
+If a request comes in over HTTP (request.TLS is nil), the HSTS header is silently
+skipped. This prevents potential security issues from sending HSTS over insecure
+connections.
+
+	filter := filters.ResponseHeaders().
+		HSTS(31536000, true, true).  // Only sent on HTTPS
+		Build()
+
+# Frame Options
+
+The X-Frame-Options header has a custom type with constants for type-safe usage:
+
+	// Deny all framing
+	FrameOptions(filters.FrameOptionDeny)
+
+	// Allow same-origin framing (default)
+	FrameOptions(filters.FrameOptionSameOrigin)
+
+	// Allow specific origin
+	FrameOptions(filters.FrameOptionAllowFrom("https://trusted.example.com"))
+
+# Type-Safe Security Headers
+
+Several security headers use custom string types with predefined constants for type safety:
+
+Referrer-Policy constants:
+
+	ReferrerPolicyNoReferrer                      // "no-referrer"
+	ReferrerPolicyNoReferrerWhenDowngrade        // "no-referrer-when-downgrade"
+	ReferrerPolicyOrigin                          // "origin"
+	ReferrerPolicyOriginWhenCrossOrigin          // "origin-when-cross-origin"
+	ReferrerPolicySameOrigin                      // "same-origin"
+	ReferrerPolicyStrictOrigin                    // "strict-origin"
+	ReferrerPolicyStrictOriginWhenCrossOrigin    // "strict-origin-when-cross-origin"
+	ReferrerPolicyUnsafeURL                       // "unsafe-url"
+
+Cross-Origin-Embedder-Policy constants:
+
+	COEPUnsafeNone          // "unsafe-none"
+	COEPRequireCorp         // "require-corp"
+	COEPCredentialless      // "credentialless"
+
+Cross-Origin-Opener-Policy constants:
+
+	COOPUnsafeNone                // "unsafe-none"
+	COOPSameOriginAllowPopups     // "same-origin-allow-popups"
+	COOPSameOrigin                // "same-origin"
+
+Cross-Origin-Resource-Policy constants:
+
+	CORPSameSite        // "same-site"
+	CORPSameOrigin      // "same-origin"
+	CORPCrossOrigin     // "cross-origin"
+
+Example usage:
+
+	filter := filters.ResponseHeaders().
+		ReferrerPolicy(filters.ReferrerPolicyStrictOriginWhenCrossOrigin).
+		COEP(filters.COEPRequireCorp).
+		COOP(filters.COOPSameOrigin).
+		CORP(filters.CORPSameOrigin).
+		Build()
+
+# Custom Headers
+
+You can add any custom header using the Header() method:
+
+	filter := filters.ResponseHeaders().
+		Header("X-API-Version", "v1.0").
+		Header("X-Request-ID", "generated-id").
+		Header("Cache-Control", "no-store, no-cache, must-revalidate").
+		Build()
+
+Headers are applied in the order they are defined. If you set the same header
+multiple times, the last value wins.
+
+# Disabling Default Headers
+
+You can explicitly disable the default security headers if needed:
+
+	filter := filters.ResponseHeaders().
+		DisableNoSniff().          // Remove X-Content-Type-Options
+		DisableFrameOptions().     // Remove X-Frame-Options
+		CSP("default-src 'self'"). // But add CSP
+		Build()
+
+# Path-Specific Configuration
+
+Like the CORS filter, ResponseHeaders supports path-specific configurations with
+wildcard matching:
+
+	filter := filters.ResponseHeaders().
+		// Default: secure headers for all paths
+		HSTS(31536000, true, false).
+
+		// API paths: add custom headers but keep defaults
+		Path("/api/**").
+			Header("X-API-Version", "v2.0").
+			Header("Cache-Control", "no-store").
+			Add().
+
+		// Public assets: different frame options
+		Path("/assets/**").
+			FrameOptions(filters.FrameOptionDeny).
+			Header("Cache-Control", "public, max-age=31536000").
+			Add().
+
+		// Admin area: strictest security
+		Path("/admin/**").
+			FrameOptions(filters.FrameOptionDeny).
+			HSTS(63072000, true, true).
+			CSP("default-src 'self'").
+			Add().
+
+		Build()
+
+	engine.AddFilter(filter)
+
+# Disabling Headers for Specific Paths
+
+You can disable all headers for specific paths (useful for health checks,
+internal endpoints, or API endpoints that should not have these headers):
+
+	filter := filters.ResponseHeaders().
+		// Default: add security headers everywhere
+		HSTS(31536000, true, false).
+
+		// No headers for these paths
+		Path("/health", "/metrics", "/internal/*").
+			Disabled().
+			Add().
+
+		Build()
+
+# Path Precedence
+
+When multiple path configurations could match a request, the most specific path wins:
+
+  - Exact paths (e.g., "/api/users") are most specific
+  - Single wildcards (e.g., "/api/*") are less specific
+  - Double wildcards (e.g., "/api/**") are least specific
+  - Default configuration (/** and /) applies when no specific path matches
+
+# Security Best Practices
+
+When using the ResponseHeaders filter, consider these recommendations:
+
+  - Start with the secure defaults and only disable them if you have a specific reason
+  - Always use HSTS with long max-age (at least 1 year = 31536000 seconds) for production
+  - Implement a strict Content-Security-Policy to prevent XSS attacks
+  - Use FrameOptionDeny for paths that should never be embedded
+  - Set appropriate Referrer-Policy to control what information is sent in referrers
+  - For APIs, consider disabling frame-related headers if they're not relevant
+  - Test headers in development before deploying to production
+  - Use path-specific configurations to apply different policies to different areas
+
+# Common Patterns
+
+API endpoints with caching disabled:
+
+	filter := filters.ResponseHeaders().
+		Path("/api/**").
+			Header("Cache-Control", "no-store, no-cache, must-revalidate").
+			Header("Pragma", "no-cache").
+			Add().
+		Build()
+
+Maximum security for authenticated areas:
+
+	filter := filters.ResponseHeaders().
+		Path("/app/**", "/admin/**").
+			FrameOptions(filters.FrameOptionDeny).
+			HSTS(63072000, true, true).
+			CSP("default-src 'self'; script-src 'self'; object-src 'none'").
+			ReferrerPolicy(ReferrerPolicyNoReferrer).
+			COEP(COEPRequireCorp).
+			COOP(COOPSameOrigin).
+			CORP(CORPSameOrigin).
+			Add().
+		Build()
+
+Public content with relaxed headers:
+
+	filter := filters.ResponseHeaders().
+		Path("/public/**").
+			DisableFrameOptions().  // Allow embedding
+			Header("Cache-Control", "public, max-age=86400").
+			Add().
+		Build()
+
+See the package examples for more detailed usage scenarios.
 */
 package filters
