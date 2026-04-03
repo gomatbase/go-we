@@ -94,7 +94,8 @@ type sessionManager struct {
 func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request) *Session {
 	var session *Session
 	sessionId, cookieFetchError := r.Cookie(sm.cookieName)
-	if cookieFetchError != http.ErrNoCookie {
+	// only http.ErrNoCookie is possible.
+	if cookieFetchError == nil {
 		sm.storageMutex.Lock()
 		if session = sm.storage.Get(r.Context(), sessionId.Value); session != nil {
 			if session.LastUse.Add(sm.timeout).Before(time.Now()) {
