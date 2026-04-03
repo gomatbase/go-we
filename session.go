@@ -23,10 +23,18 @@ const (
 	DefaultPurgeInterval = time.Minute
 )
 
+// Session status constants
+const (
+	// SessionStatusNew indicates a newly created session
+	SessionStatusNew uint = 0
+	// SessionStatusExisting indicates an existing session retrieved from storage
+	SessionStatusExisting uint = 1
+)
+
 // Session object associated to a request (either the request comes with a Session identifier or it is created for
 // the request
 type Session struct {
-	// If the Session has just been created or if it's an existing one
+	// Status indicates if the Session has just been created (SessionStatusNew) or if it's an existing one (SessionStatusExisting)
 	Status uint
 
 	// Timestamp of last Session use
@@ -97,6 +105,7 @@ func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request)
 				if !sm.fixedLifespan {
 					session.LastUse = time.Now()
 				}
+				session.Status = SessionStatusExisting
 			}
 		}
 		sm.storageMutex.Unlock()
@@ -105,6 +114,7 @@ func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request)
 	if session == nil {
 		sm.storageMutex.Lock()
 		session = &Session{
+			Status:     SessionStatusNew,
 			LastUse:    time.Now(),
 			Id:         uuid.New().String(),
 			Attributes: make(map[string]any),
