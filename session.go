@@ -92,6 +92,11 @@ func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request)
 			if session.LastUse.Add(sm.timeout).Before(time.Now()) {
 				sm.storage.Delete(r.Context(), session.Id)
 				session = nil
+			} else {
+				// Update LastUse for rolling sessions (non-fixed lifespan)
+				if !sm.fixedLifespan {
+					session.LastUse = time.Now()
+				}
 			}
 		}
 		sm.storageMutex.Unlock()
