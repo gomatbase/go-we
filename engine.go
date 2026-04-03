@@ -1,4 +1,4 @@
-// Copyright 2020 GOM. All rights reserved.
+// Copyright 2020-2026 GOM. All rights reserved.
 // Since 27/02/2020 By GOM
 // Licensed under MIT License
 
@@ -421,6 +421,17 @@ loop:
 
 }
 
+// New creates and returns a new WebEngine instance with default configuration.
+// The engine implements http.Handler and can be used as a drop-in replacement for http.DefaultServeMux.
+//
+// Example:
+//
+//	engine := we.New()
+//	engine.Handle("/", func(w http.ResponseWriter, scope we.RequestScope) error {
+//	    w.Write([]byte("Hello, World!"))
+//	    return nil
+//	})
+//	engine.Listen(":8080")
 func New() WebEngine {
 	return &webEngine{
 		matchTrees: map[string]pathTree.Tree[HandlerFunction]{"ALL": pathTree.New[HandlerFunction]()},

@@ -1,4 +1,4 @@
-// Copyright 2023 GOM. All rights reserved.
+// Copyright 2023-2026 GOM. All rights reserved.
 // Since 14/11/2023 By GOM
 // Licensed under MIT License
 

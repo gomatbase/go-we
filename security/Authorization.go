@@ -1,4 +1,4 @@
-// Copyright 2023 GOM. All rights reserved.
+// Copyright 2023-2026 GOM. All rights reserved.
 // Since 16/11/2023 By GOM
 // Licensed under MIT License
 
@@ -18,6 +18,17 @@ type Authorization interface {
 	IsAuthorized(*User, we.RequestScope) bool
 }
 
+// All returns an Authorization that requires all provided authorizations to pass.
+// The authorizations are evaluated in order and fail fast (returns false on first failure).
+//
+// Example:
+//
+//	auth := security.All(
+//	    security.Scope("admin"),
+//	    security.AuthorizationFunc(func(u *User, s we.RequestScope) bool {
+//	        return u.Username == "superadmin"
+//	    }),
+//	)
 func All(authorizations ...Authorization) Authorization {
 	return all(authorizations)
 }
@@ -33,6 +44,15 @@ func (a all) IsAuthorized(user *User, scope we.RequestScope) bool {
 	return true
 }
 
+// Either returns an Authorization that requires at least one of the provided authorizations to pass.
+// The authorizations are evaluated in order and short-circuit (returns true on first success).
+//
+// Example:
+//
+//	auth := security.Either(
+//	    security.Scope("admin"),
+//	    security.Scope("moderator"),
+//	)
 func Either(authorizations ...Authorization) Authorization {
 	return either(authorizations)
 }

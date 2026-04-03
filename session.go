@@ -1,4 +1,4 @@
-// Copyright 2023 GOM. All rights reserved.
+// Copyright 2023-2026 GOM. All rights reserved.
 // Since 20/10/2023 By GOM
 // Licensed under MIT License
 
@@ -171,7 +171,20 @@ func (imss *inMemorySessionStorage) Get(_ context.Context, sessionId string) *Se
 	return imss.sessions[sessionId]
 }
 
-// DefaultSessionManager provides a default in-memory Session manager
+// DefaultSessionManager creates and returns a SessionManager with the provided configuration.
+// If Storage is nil, an in-memory session storage is used.
+// If SessionTimeout is 0, DefaultSessionTimeout (1 hour) is used.
+// If CookieName is empty, DefaultCookieName ("weSessionId") is used.
+// If SessionPurgingInterval is 0, DefaultPurgeInterval (1 minute) is used.
+//
+// Example:
+//
+//	sessionManager := we.DefaultSessionManager(we.SessionManagerConfiguration{
+//	    SessionTimeout: time.Hour,
+//	    CookieName: "myapp_session",
+//	    StaticSessionLifespan: false, // rolling sessions
+//	})
+//	engine.SetSessionManager(sessionManager)
 func DefaultSessionManager(configuration SessionManagerConfiguration) SessionManager {
 	sm := &sessionManager{
 		timeout:       configuration.SessionTimeout,
