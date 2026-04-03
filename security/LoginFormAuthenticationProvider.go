@@ -22,6 +22,9 @@ import (
 const (
 	FormRealm = "Form"
 
+	// MaxLoginFormSize is the maximum allowed size for a login form submission
+	MaxLoginFormSize = 1024
+
 	DefaultTemplate = "<!DOCTYPE html>" +
 		"<html lang=\"en\">" +
 		"<head>" +
@@ -199,7 +202,7 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 		// Let's see if it's a submission
 		if request.Method == http.MethodPost {
 			// it is... let's first quickly check if it's small enough to be a submission form, and if not, let's simply unauthorize it
-			if request.ContentLength > 1024 {
+			if request.ContentLength > MaxLoginFormSize {
 				// such a submission would come out of another source and not from the provider, so... drop the target
 				return nil, events.BadRequestError.WithPayload("application/html", []byte(lfap.loginForm.Generate("Invalid login submission", "")))
 			}
