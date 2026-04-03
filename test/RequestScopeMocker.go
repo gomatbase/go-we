@@ -52,7 +52,7 @@ func (m *mockedRequestScope) Request() *http.Request {
 	return m.request
 }
 
-func (m *mockedRequestScope) GetContext() context.Context {
+func (m *mockedRequestScope) Context() context.Context {
 	return m.request.Context()
 }
 

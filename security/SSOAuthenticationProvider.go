@@ -164,7 +164,7 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 		} else {
 			delete(sap.authorizationRequests, requestId)
 
-			if user, e := sap.authorizationCodeProvider.ValidateAuthorizationCode(scope.GetContext(), authorizationCode, sap.redirectUrl(request)); e != nil {
+			if user, e := sap.authorizationCodeProvider.ValidateAuthorizationCode(scope.Context(), authorizationCode, sap.redirectUrl(request)); e != nil {
 				return nil, events.UnauthorizedError
 			} else if user == nil {
 				return nil, events.UnauthorizedError

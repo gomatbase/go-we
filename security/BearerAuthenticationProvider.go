@@ -79,7 +79,7 @@ func (bap *bearerAuthenticationProvider) Authenticate(_ http.Header, scope we.Re
 		strings.HasPrefix(strings.ToLower(authorization[:7]), "bearer ") {
 
 		token := authorization[7:]
-		if user, e := bap.tokenIntrospector.Introspect(scope.GetContext(), token); e != nil || user == nil {
+		if user, e := bap.tokenIntrospector.Introspect(scope.Context(), token); e != nil || user == nil {
 			return nil, events.UnauthorizedError
 		} else {
 			return user, nil

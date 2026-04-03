@@ -46,7 +46,7 @@ func (bap *basicAuthenticationProvider) Authenticate(headers http.Header, scope 
 			return nil, events.BadRequestError.WithPayload("text/plain", []byte("invalid credentials"))
 		} else {
 			md5Sum := md5.Sum([]byte(password))
-			if user, e := bap.credentialsProvider.Authenticate(scope.GetContext(), username, base64.StdEncoding.EncodeToString(md5Sum[:])); e != nil {
+			if user, e := bap.credentialsProvider.Authenticate(scope.Context(), username, base64.StdEncoding.EncodeToString(md5Sum[:])); e != nil {
 				return nil, events.ForbiddenError.WithPayload("text/plain", []byte(e.Error()))
 			} else {
 				return user, nil

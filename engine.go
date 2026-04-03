@@ -24,8 +24,8 @@ import (
 type RequestScope interface {
 	// Request returns the underlying http.Request object
 	Request() *http.Request
-	// GetContext returns the context of the underlying http.Request for managing cancellation and timeouts
-	GetContext() context.Context
+	// Context returns the context of the underlying http.Request for managing cancellation and timeouts
+	Context() context.Context
 	// Var returns the value of a path variable. String is empty if trying to access a variable which doesn't exist for the path
 	Var(string) string
 	// LookupVar returns the value of a path variable as Var does, but also indicates if in case of an empty value if it's because the variable does not exist
@@ -73,7 +73,8 @@ func (rs *requestScope) Request() *http.Request {
 }
 
 // GetContext returns the context of the underlying http.Request for managing cancellation and timeouts
-func (rs *requestScope) GetContext() context.Context {
+// Context returns the context of the underlying http.Request
+func (rs *requestScope) Context() context.Context {
 	return rs.request.Context()
 }
 
