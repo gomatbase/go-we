@@ -79,6 +79,27 @@ type SessionManagerConfiguration struct {
 	CookieName string
 	// Interval at which purging process checks for expired sessions and cleans them from storage
 	SessionPurgingInterval time.Duration
+
+	// Cookie security and scoping attributes
+	// CookieHttpOnly prevents JavaScript access to the cookie (XSS protection).
+	// When not explicitly set and using default configuration, defaults to true for security.
+	// Set to false only if you need JavaScript cookie access.
+	CookieHttpOnly *bool
+	// CookieSecure restricts cookie to HTTPS only. Defaults to false to allow HTTP in development.
+	// Should be set to true in production.
+	CookieSecure bool
+	// CookieSameSite controls cross-site cookie behavior for CSRF protection.
+	// Defaults to http.SameSiteLaxMode. Use http.SameSiteStrictMode for stricter protection.
+	CookieSameSite http.SameSite
+	// CookiePath restricts cookie to specific path. Defaults to "/".
+	CookiePath string
+	// CookieDomain restricts cookie to specific domain. Defaults to "" (current domain).
+	CookieDomain string
+	// CookieMaxAge sets Max-Age attribute in seconds. 0 means session cookie (browser default).
+	// Negative values delete the cookie immediately. Defaults to 0.
+	CookieMaxAge int
+	// CookiePartitioned enables partitioned cookies for third-party contexts (CHIPS). Defaults to false.
+	CookiePartitioned bool
 }
 
 // sessionManager a SessionManager implementation with background thread cleaning stale sessions
@@ -87,6 +108,15 @@ type sessionManager struct {
 	timeout       time.Duration
 	storage       SessionStorage
 	cookieName    string
+
+	// Cookie configuration
+	cookieHttpOnly    bool
+	cookieSecure      bool
+	cookieSameSite    http.SameSite
+	cookiePath        string
+	cookieDomain      string
+	cookieMaxAge      int
+	cookiePartitioned bool
 
 	storageMutex sync.Mutex
 }
@@ -122,7 +152,17 @@ func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request)
 		}
 		sm.storage.Put(r.Context(), session)
 		sm.storageMutex.Unlock()
-		http.SetCookie(w, &http.Cookie{Name: sm.cookieName, Value: session.Id, Path: "/"})
+		http.SetCookie(w, &http.Cookie{
+			Name:        sm.cookieName,
+			Value:       session.Id,
+			Path:        sm.cookiePath,
+			Domain:      sm.cookieDomain,
+			MaxAge:      sm.cookieMaxAge,
+			Secure:      sm.cookieSecure,
+			HttpOnly:    sm.cookieHttpOnly,
+			SameSite:    sm.cookieSameSite,
+			Partitioned: sm.cookiePartitioned,
+		})
 	}
 
 	return session
@@ -176,21 +216,47 @@ func (imss *inMemorySessionStorage) Get(_ context.Context, sessionId string) *Se
 // If SessionTimeout is 0, DefaultSessionTimeout (1 hour) is used.
 // If CookieName is empty, DefaultCookieName ("weSessionId") is used.
 // If SessionPurgingInterval is 0, DefaultPurgeInterval (1 minute) is used.
+// If CookiePath is empty, defaults to "/".
+// If CookieSameSite is 0, defaults to http.SameSiteLaxMode.
+// If CookieHttpOnly is nil, defaults to true for security (prevents JavaScript access).
 //
-// Example:
+// Example with secure defaults:
 //
 //	sessionManager := we.DefaultSessionManager(we.SessionManagerConfiguration{
 //	    SessionTimeout: time.Hour,
 //	    CookieName: "myapp_session",
 //	    StaticSessionLifespan: false, // rolling sessions
+//	    // CookieHttpOnly defaults to true (secure by default)
+//	    CookieSecure: true,           // HTTPS only (recommended for production)
+//	    CookieSameSite: http.SameSiteStrictMode, // CSRF protection
 //	})
 //	engine.SetSessionManager(sessionManager)
+//
+// To explicitly disable HttpOnly (not recommended):
+//
+//	httpOnlyFalse := false
+//	sessionManager := we.DefaultSessionManager(we.SessionManagerConfiguration{
+//	    CookieHttpOnly: &httpOnlyFalse, // Explicitly disable (allows JavaScript access)
+//	})
 func DefaultSessionManager(configuration SessionManagerConfiguration) SessionManager {
+	// Determine CookieHttpOnly value (defaults to true for security)
+	cookieHttpOnly := true
+	if configuration.CookieHttpOnly != nil {
+		cookieHttpOnly = *configuration.CookieHttpOnly
+	}
+
 	sm := &sessionManager{
-		timeout:       configuration.SessionTimeout,
-		storage:       configuration.Storage,
-		fixedLifespan: configuration.StaticSessionLifespan,
-		cookieName:    configuration.CookieName,
+		timeout:           configuration.SessionTimeout,
+		storage:           configuration.Storage,
+		fixedLifespan:     configuration.StaticSessionLifespan,
+		cookieName:        configuration.CookieName,
+		cookieHttpOnly:    cookieHttpOnly,
+		cookieSecure:      configuration.CookieSecure,
+		cookieSameSite:    configuration.CookieSameSite,
+		cookiePath:        configuration.CookiePath,
+		cookieDomain:      configuration.CookieDomain,
+		cookieMaxAge:      configuration.CookieMaxAge,
+		cookiePartitioned: configuration.CookiePartitioned,
 	}
 
 	if sm.timeout == 0 {
@@ -203,6 +269,14 @@ func DefaultSessionManager(configuration SessionManagerConfiguration) SessionMan
 
 	if len(sm.cookieName) == 0 {
 		sm.cookieName = DefaultCookieName
+	}
+
+	if len(sm.cookiePath) == 0 {
+		sm.cookiePath = "/"
+	}
+
+	if sm.cookieSameSite == 0 {
+		sm.cookieSameSite = http.SameSiteLaxMode
 	}
 
 	if configuration.SessionPurgingInterval == 0 {

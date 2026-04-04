@@ -671,12 +671,12 @@ func logout(w http.ResponseWriter, scope we.RequestScope) error {
 config := we.SessionManagerConfiguration{
     SessionTimeout: time.Hour,
     CookieName: "session",
-    // Additional cookie configuration
+    // Cookie security configuration
     CookiePath: "/",
     CookieDomain: "example.com",
-    CookieHttpOnly: true,
-    CookieSecure: true, // HTTPS only
-    CookieSameSite: http.SameSiteStrictMode,
+    // CookieHttpOnly defaults to true for security
+    CookieSecure: true, // HTTPS only (recommended for production)
+    CookieSameSite: http.SameSiteStrictMode, // CSRF protection
 }
 ```
 
