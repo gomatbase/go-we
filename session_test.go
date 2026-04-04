@@ -13,9 +13,9 @@ import (
 
 func TestSessionCookieAttributes(t *testing.T) {
 	tests := []struct {
-		name   string
-		config SessionManagerConfiguration
-		want   struct {
+		name    string
+		builder func() SessionManagerBuilder
+		want    struct {
 			httpOnly    bool
 			secure      bool
 			sameSite    http.SameSite
@@ -26,8 +26,8 @@ func TestSessionCookieAttributes(t *testing.T) {
 		}
 	}{
 		{
-			name:   "Default configuration (secure by default)",
-			config: SessionManagerConfiguration{},
+			name:    "Default configuration (secure by default)",
+			builder: func() SessionManagerBuilder { return DefaultSessionManager() },
 			want: struct {
 				httpOnly    bool
 				secure      bool
@@ -48,11 +48,12 @@ func TestSessionCookieAttributes(t *testing.T) {
 		},
 		{
 			name: "Production secure configuration",
-			config: SessionManagerConfiguration{
-				CookieSecure:   true,
-				CookieSameSite: http.SameSiteStrictMode,
-				CookiePath:     "/app",
-				CookieDomain:   "example.com",
+			builder: func() SessionManagerBuilder {
+				return DefaultSessionManager().
+					CookieSecure(true).
+					CookieSameSite(http.SameSiteStrictMode).
+					CookiePath("/app").
+					CookieDomain("example.com")
 			},
 			want: struct {
 				httpOnly    bool
@@ -74,8 +75,8 @@ func TestSessionCookieAttributes(t *testing.T) {
 		},
 		{
 			name: "Explicitly disable HttpOnly (not recommended)",
-			config: SessionManagerConfiguration{
-				CookieHttpOnly: boolPtr(false), // Explicitly disable
+			builder: func() SessionManagerBuilder {
+				return DefaultSessionManager().CookieHttpOnly(false)
 			},
 			want: struct {
 				httpOnly    bool
@@ -97,14 +98,15 @@ func TestSessionCookieAttributes(t *testing.T) {
 		},
 		{
 			name: "Full custom configuration",
-			config: SessionManagerConfiguration{
-				CookieHttpOnly:    boolPtr(true),
-				CookieSecure:      true,
-				CookieSameSite:    http.SameSiteStrictMode,
-				CookiePath:        "/api",
-				CookieDomain:      "api.example.com",
-				CookieMaxAge:      3600,
-				CookiePartitioned: true,
+			builder: func() SessionManagerBuilder {
+				return DefaultSessionManager().
+					CookieHttpOnly(true).
+					CookieSecure(true).
+					CookieSameSite(http.SameSiteNoneMode).
+					CookiePath("/api").
+					CookieDomain("api.example.com").
+					CookieMaxAge(3600).
+					CookiePartitioned(true)
 			},
 			want: struct {
 				httpOnly    bool
@@ -117,7 +119,7 @@ func TestSessionCookieAttributes(t *testing.T) {
 			}{
 				httpOnly:    true,
 				secure:      true,
-				sameSite:    http.SameSiteStrictMode,
+				sameSite:    http.SameSiteNoneMode,
 				path:        "/api",
 				domain:      "api.example.com",
 				maxAge:      3600,
@@ -129,7 +131,7 @@ func TestSessionCookieAttributes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create session manager with test configuration
-			sessionManager := DefaultSessionManager(tt.config)
+			sessionManager := tt.builder().Build()
 
 			// Create test request and response recorder
 			req := httptest.NewRequest("GET", "/", nil)
@@ -184,13 +186,9 @@ func TestSessionCookieAttributes(t *testing.T) {
 				t.Errorf("Partitioned: got %v, want %v", cookie.Partitioned, tt.want.partitioned)
 			}
 
-			// Verify cookie name and value
-			expectedName := tt.config.CookieName
-			if expectedName == "" {
-				expectedName = DefaultCookieName
-			}
-			if cookie.Name != expectedName {
-				t.Errorf("Cookie name: got %q, want %q", cookie.Name, expectedName)
+			// Verify cookie name (all tests use default name)
+			if cookie.Name != DefaultCookieName {
+				t.Errorf("Cookie name: got %q, want %q", cookie.Name, DefaultCookieName)
 			}
 
 			if cookie.Value == "" {
@@ -201,17 +199,15 @@ func TestSessionCookieAttributes(t *testing.T) {
 }
 
 func TestSessionCookieAttributesExistingSession(t *testing.T) {
-	// Create session manager with custom config
-	httpOnlyFalse := false
-	config := SessionManagerConfiguration{
-		CookieHttpOnly:        &httpOnlyFalse,
-		CookieSecure:          true,
-		CookieSameSite:        http.SameSiteStrictMode,
-		CookiePath:            "/app",
-		SessionTimeout:        time.Hour,
-		StaticSessionLifespan: false, // rolling session
-	}
-	sessionManager := DefaultSessionManager(config)
+	// Create session manager with custom config using builder
+	sessionManager := DefaultSessionManager().
+		CookieHttpOnly(false).
+		CookieSecure(true).
+		CookieSameSite(http.SameSiteStrictMode).
+		CookiePath("/app").
+		SessionTimeout(time.Hour).
+		StaticSessionLifespan(false). // rolling session
+		Build()
 
 	// Create initial session
 	req1 := httptest.NewRequest("GET", "/app/test", nil)
