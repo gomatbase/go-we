@@ -474,6 +474,337 @@ func TestWebEnginePathHandling(t *testing.T) {
 	})
 }
 
+func TestRequestScopeMethods(t *testing.T) {
+	t.Run("Test path variables", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.Handle("/user/{id}/profile/{section}", func(w http.ResponseWriter, r we.RequestScope) error {
+			id := r.Var("id")
+			section := r.Var("section")
+			missing := r.Var("missing")
+
+			idVal, idFound := r.LookupVar("id")
+			_, missingFound := r.LookupVar("missing")
+
+			if id != "123" || section != "settings" {
+				return fmt.Errorf("unexpected path variables: id=%s, section=%s", id, section)
+			}
+			if missing != "" {
+				return fmt.Errorf("expected empty string for missing variable")
+			}
+			if !idFound || idVal != "123" {
+				return fmt.Errorf("LookupVar failed for id")
+			}
+			if missingFound {
+				return fmt.Errorf("expected false for missing variable")
+			}
+
+			_, _ = w.Write([]byte("success"))
+			return nil
+		})
+
+		portStr := start(engine)
+		result, e := test.Request(fmt.Sprintf("http://localhost%s/user/123/profile/settings", portStr)).Get()
+
+		if e != nil {
+			t.Error("Unexpected error:", e)
+		} else if string(result) != "success" {
+			t.Error("Handler error:", string(result))
+		}
+
+		_ = shutdown()
+	})
+
+	t.Run("Test query parameters", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.Handle("/search", func(w http.ResponseWriter, r we.RequestScope) error {
+			q := r.Parameter("q")
+			missing := r.Parameter("missing")
+
+			tags := r.Parameters("tag")
+			emptyTags := r.Parameters("notag")
+
+			qVal, qFound := r.LookupParameter("q")
+			_, missingFound := r.LookupParameter("missing")
+
+			tagVals, tagsFound := r.LookupParameters("tag")
+			_, notagsFound := r.LookupParameters("notag")
+
+			if q != "golang" {
+				return fmt.Errorf("unexpected query param: q=%s", q)
+			}
+			if missing != "" {
+				return fmt.Errorf("expected empty string for missing param")
+			}
+			if len(tags) != 2 || tags[0] != "web" || tags[1] != "framework" {
+				return fmt.Errorf("unexpected tags: %v", tags)
+			}
+			if len(emptyTags) != 0 {
+				return fmt.Errorf("expected empty slice for missing tags")
+			}
+			if !qFound || qVal != "golang" {
+				return fmt.Errorf("LookupParameter failed for q")
+			}
+			if missingFound {
+				return fmt.Errorf("expected false for missing parameter")
+			}
+			if !tagsFound || len(tagVals) != 2 {
+				return fmt.Errorf("LookupParameters failed for tag")
+			}
+			if notagsFound {
+				return fmt.Errorf("expected false for missing parameters")
+			}
+
+			_, _ = w.Write([]byte("success"))
+			return nil
+		})
+
+		portStr := start(engine)
+		result, e := test.Request(fmt.Sprintf("http://localhost%s/search?q=golang&tag=web&tag=framework", portStr)).Get()
+
+		if e != nil {
+			t.Error("Unexpected error:", e)
+		} else if string(result) != "success" {
+			t.Error("Handler error:", string(result))
+		}
+
+		_ = shutdown()
+	})
+
+	t.Run("Test request scope attributes", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+			r.Set("userId", "user123")
+			r.Set("role", "admin")
+			return nil
+		}))
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+			userId := r.Get("userId")
+			role := r.Get("role")
+			missing := r.Get("missing")
+
+			if userId != "user123" || role != "admin" {
+				return fmt.Errorf("unexpected attributes: userId=%v, role=%v", userId, role)
+			}
+			if missing != nil {
+				return fmt.Errorf("expected nil for missing attribute")
+			}
+
+			_, _ = w.Write([]byte("success"))
+			return nil
+		})
+
+		portStr := start(engine)
+		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
+
+		if e != nil {
+			t.Error("Unexpected error:", e)
+		} else if string(result) != "success" {
+			t.Error("Handler error:", string(result))
+		}
+
+		_ = shutdown()
+	})
+
+	t.Run("Test session attributes", func(t *testing.T) {
+		engine, shutdown := newServer()
+		sessionManager := we.DefaultSessionManager().
+			CookieSecure(false).
+			Build()
+		engine.SetSessionManager(sessionManager)
+
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+			if !r.HasSession() {
+				return fmt.Errorf("expected session to be present")
+			}
+
+			// Test setting and getting in same request
+			r.SetInSession("counter", 42)
+			r.SetInSession("user", "alice")
+
+			counter := r.GetFromSession("counter")
+			user := r.GetFromSession("user")
+			missing := r.GetFromSession("missing")
+
+			if counter != 42 || user != "alice" {
+				return fmt.Errorf("unexpected session attributes: counter=%v, user=%v", counter, user)
+			}
+			if missing != nil {
+				return fmt.Errorf("expected nil for missing session attribute")
+			}
+
+			_, _ = w.Write([]byte("success"))
+			return nil
+		})
+
+		portStr := start(engine)
+		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
+
+		if e != nil {
+			t.Error("Unexpected error:", e)
+		} else if string(result) != "success" {
+			t.Error("Handler error:", string(result))
+		}
+
+		_ = shutdown()
+	})
+
+	t.Run("Test Request and Context methods", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+			req := r.Request()
+			ctx := r.Context()
+
+			if req == nil {
+				return fmt.Errorf("expected Request() to return non-nil")
+			}
+			if ctx == nil {
+				return fmt.Errorf("expected Context() to return non-nil")
+			}
+			if req.Context() != ctx {
+				return fmt.Errorf("expected Context() to match Request().Context()")
+			}
+
+			_, _ = w.Write([]byte("success"))
+			return nil
+		})
+
+		portStr := start(engine)
+		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
+
+		if e != nil {
+			t.Error("Unexpected error:", e)
+		} else if string(result) != "success" {
+			t.Error("Handler error:", string(result))
+		}
+
+		_ = shutdown()
+	})
+}
+
+func TestWebEngineMethodHandling(t *testing.T) {
+	t.Run("Test HandleMethod routing", func(t *testing.T) {
+		engine, shutdown := newServer()
+		engine.HandleMethod(http.MethodGet, "/resource", simpleHandler("GET response"))
+		engine.HandleMethod(http.MethodPost, "/resource", simpleHandler("POST response"))
+		engine.HandleMethod(http.MethodPut, "/resource", simpleHandler("PUT response"))
+		engine.HandleMethod(http.MethodDelete, "/resource", simpleHandler("DELETE response"))
+
+		portStr := start(engine)
+
+		result, e := test.Request(fmt.Sprintf("http://localhost%s/resource", portStr)).Get()
+		if e != nil {
+			t.Error("GET error:", e)
+		} else if string(result) != "GET response" {
+			t.Error("Unexpected GET response:", string(result))
+		}
+
+		req := test.Request(fmt.Sprintf("http://localhost%s/resource", portStr))
+		req.WithContent([]byte("data"))
+		resp, e := req.DoWithResponse(http.MethodPost)
+		if e != nil {
+			t.Error("POST error:", e)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		if string(body) != "POST response" {
+			t.Error("Unexpected POST response:", string(body))
+		}
+
+		_ = shutdown()
+	})
+}
+
+func TestWebEngineFilterHandling(t *testing.T) {
+	t.Run("Test filter can set headers", func(t *testing.T) {
+		engine, shutdown := newServer()
+
+		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+			h.Set("X-Custom-Header", "test-value")
+			h.Set("X-Request-Id", "12345")
+			return nil
+		}))
+
+		engine.Handle("/", simpleHandler("success"))
+
+		portStr := start(engine)
+		resp, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+
+		if e != nil {
+			t.Error("Unexpected error:", e)
+		} else if resp.Header.Get("X-Custom-Header") != "test-value" {
+			t.Error("Expected X-Custom-Header to be set")
+		} else if resp.Header.Get("X-Request-Id") != "12345" {
+			t.Error("Expected X-Request-Id to be set")
+		}
+
+		_ = shutdown()
+	})
+
+	t.Run("Test filter error stops request", func(t *testing.T) {
+		engine, shutdown := newServer()
+
+		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+			return events.UnauthorizedError
+		}))
+
+		engine.Handle("/", simpleHandler("should not reach here"))
+
+		portStr := start(engine)
+		resp, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+
+		if e != nil {
+			t.Error("Unexpected error:", e)
+		} else if resp.StatusCode != http.StatusUnauthorized {
+			t.Error("Expected 401 status code, got:", resp.StatusCode)
+		}
+
+		_ = shutdown()
+	})
+
+	t.Run("Test multiple filters execute in order", func(t *testing.T) {
+		engine, shutdown := newServer()
+
+		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+			h.Set("X-Filter-1", "executed")
+			r.Set("filter1", true)
+			return nil
+		}))
+
+		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+			if r.Get("filter1") != true {
+				return fmt.Errorf("filter1 should have executed first")
+			}
+			h.Set("X-Filter-2", "executed")
+			return nil
+		}))
+
+		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+			if r.Get("filter1") != true {
+				return fmt.Errorf("filter1 did not execute")
+			}
+			_, _ = w.Write([]byte("success"))
+			return nil
+		})
+
+		portStr := start(engine)
+		resp, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
+
+		if e != nil {
+			t.Error("Unexpected error:", e)
+		} else if resp.Header.Get("X-Filter-1") != "executed" {
+			t.Error("Expected X-Filter-1 to be set")
+		} else if resp.Header.Get("X-Filter-2") != "executed" {
+			t.Error("Expected X-Filter-2 to be set")
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		if string(body) != "success" {
+			t.Error("Handler did not execute properly")
+		}
+
+		_ = shutdown()
+	})
+}
+
 func TestWebEngineDefaultErrorHandling(t *testing.T) {
 	t.Run("Test simple application error", func(t *testing.T) {
 		var shutdown func() error

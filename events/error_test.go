@@ -6,6 +6,7 @@ package events
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -85,5 +86,57 @@ func TestWeEvent_Is(t *testing.T) {
 	}
 	if event.Is(errors.New(event.Error())) {
 		t.Error("Non we event error identified as identical")
+	}
+}
+
+func TestWeEvent_Attribute(t *testing.T) {
+	event := New(404, "not found")
+
+	// Test default attribute
+	if event.Attribute() != "" {
+		t.Errorf("Expected empty attribute for new event, got %s", event.Attribute())
+	}
+
+	// Test WithAttribute
+	event2 := event.WithAttribute("user-error")
+	if event2.Attribute() != "user-error" {
+		t.Errorf("Expected attribute to be 'user-error', got %s", event2.Attribute())
+	}
+
+	// Verify original event unchanged
+	if event.Attribute() != "" {
+		t.Errorf("Original event should have empty attribute, got %s", event.Attribute())
+	}
+
+	// Verify new event is identical (same status/message)
+	if !event.Is(event2) {
+		t.Error("Event with attribute should be identical to original")
+	}
+}
+
+func TestWeEvent_Category(t *testing.T) {
+	tests := []struct {
+		statusCode int
+		category   int
+	}{
+		{100, 1}, // Informational
+		{200, 2}, // Success
+		{201, 2},
+		{300, 3}, // Redirection
+		{302, 3},
+		{400, 4}, // Client Error
+		{404, 4},
+		{500, 5}, // Server Error
+		{503, 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("Status %d", tt.statusCode), func(t *testing.T) {
+			event := New(tt.statusCode, "test message")
+			if event.Category() != tt.category {
+				t.Errorf("Expected category %d for status %d, got %d",
+					tt.category, tt.statusCode, event.Category())
+			}
+		})
 	}
 }
