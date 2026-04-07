@@ -28,7 +28,7 @@ var (
 	// Regular expression to validate valid endpoints that can be added to the path tree. It supports standard url
 	// endpoints, path variables identified by {} brackets and standard alphanumeric names, single path node wildcards
 	// and multi-node matching wildcards
-	validPathExpression = regexp.MustCompile("^(/|(/(([a-zA-Z0-9_.\\-@~]|%[0-9a-fA-f]{2})+|{[a-zA-Z0-9\\-_.]+}|\\*\\*?))*/?)$")
+	validPathExpression = regexp.MustCompile(`^(/|(/(([a-zA-Z0-9_.\-@~]|%[0-9a-fA-f]{2})+|{[a-zA-Z0-9\-_.]+}|\*\*?))*/?)$`)
 )
 
 // Tree is a Path Tree, holding paths where each path component is a node which may have a value. A node with a value marks
@@ -61,9 +61,6 @@ type treePathNode[T any] struct {
 
 	// helper flag identifying the current node as a path variable node
 	pathVariable bool
-
-	// helper flag identifying if the the current node has any children under any of the child categories
-	hasChildren bool
 
 	// The handler for this node. If present it tags the current node as a terminating node, meaning that a match ending
 	// in this node is a successful match. If not present, a match ending in this node is not successful, and hence,
