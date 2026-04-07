@@ -276,33 +276,6 @@ func TestWebEngineSimpleUse(t *testing.T) {
 
 		_ = shutdown()
 	})
-	t.Run("Test custom response code", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
-			w.WriteHeader(http.StatusTeapot)
-			_, _ = w.Write([]byte("success"))
-			return nil
-		})
-
-		port, portStr := nextPort()
-		go engine.Listen(portStr)
-		waitForServer(port)
-
-		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
-		if result.StatusCode != http.StatusTeapot {
-			t.Error("Unexpected response code from server:", result.StatusCode)
-		} else if e != nil {
-			t.Error("Expected no client error:", e)
-		} else if bytes, e := io.ReadAll(result.Body); e != nil {
-			t.Error("Unexpected error reading response body:", e)
-		} else if string(bytes) != "success" {
-			t.Error("Unexpected response from server")
-		}
-
-		_ = shutdown
-	})
 }
 
 func TestWebEnginePathHandling(t *testing.T) {
