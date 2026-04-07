@@ -272,14 +272,22 @@ func (wc *webEngine) SetSessionManager(sessionManager SessionManager) {
 // Listen starts the engine listening on the provided address. The engine will block until the server is stopped.
 func (wc *webEngine) Listen(addr string) error {
 	fmt.Println("Listening on", addr)
-	wc.server = &http.Server{Addr: addr, Handler: wc.Handler()}
+	wc.server = &http.Server{
+		Addr:              addr,
+		Handler:           wc.Handler(),
+		ReadHeaderTimeout: 10 * time.Second, // Prevent Slowloris attacks
+	}
 	return wc.server.ListenAndServe()
 }
 
 // ListenWithTls starts the engine listening on the provided address using https. A certificate and key file locations must be provided.
 func (wc *webEngine) ListenWithTls(addr string, certFile string, keyFile string) error {
 	fmt.Println("Listening tls on", addr)
-	wc.server = &http.Server{Addr: addr, Handler: wc.Handler()}
+	wc.server = &http.Server{
+		Addr:              addr,
+		Handler:           wc.Handler(),
+		ReadHeaderTimeout: 10 * time.Second, // Prevent Slowloris attacks
+	}
 	return wc.server.ListenAndServeTLS(certFile, keyFile)
 }
 
@@ -289,7 +297,11 @@ func (wc *webEngine) ListenWithTlsOptions(addr string, config *tls.Config) error
 		return fmt.Errorf("tls config is nil")
 	}
 
-	srv := &http.Server{Addr: addr, Handler: wc.Handler()}
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           wc.Handler(),
+		ReadHeaderTimeout: 10 * time.Second, // Prevent Slowloris attacks
+	}
 	l, e := net.Listen("tcp", addr)
 	if e != nil {
 		return e
