@@ -1,5 +1,11 @@
 # go-we
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/gomatbase/go-we.svg)](https://pkg.go.dev/github.com/gomatbase/go-we)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gomatbase/go-we)](https://goreportcard.com/report/github.com/gomatbase/go-we)
+[![Tests](https://github.com/gomatbase/go-we/actions/workflows/test.yml/badge.svg)](https://github.com/gomatbase/go-we/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/gomatbase/go-we/branch/master/graph/badge.svg)](https://codecov.io/gh/gomatbase/go-we)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 **Go-We** (pronounced "go wheeee!") is a lightweight, feature-rich HTTP web framework for Go that provides common web application functionality out of the box. It implements the `http.Handler` interface and can be used as a drop-in replacement for `http.DefaultServeMux`, while offering significantly more features.
 
 ## Features
