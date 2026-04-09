@@ -36,29 +36,55 @@ The server will start on `http://localhost:8080`
 
 ## Key Concepts
 
-### Creating a Server
+### Creating Handlers
+
+**Simple output Handler:**
+```go
+func hello(w http.ResponseWriter, scope we.RequestScope) error {
+   w.Header().Set("Content-Type", "text/plain")
+   _, _ = fmt.Fprintf(w, "Hello from Go-We!")
+   return nil
+}
+```
+
+**Content processing Handler:**
+```go
+func processForm(w http.ResponseWriter, scope we.RequestScope) error {
+   // Parse form data from the request
+   _ = scope.Request().ParseForm()
+   message := scope.Request().FormValue("message")
+   
+   w.Header().Set("Content-Type", "text/html")
+   _, _ = fmt.Fprintf(w, `
+               <h1>Form Submitted!</h1>
+               <p>Your message: <strong>%s</strong></p>
+               <p><a href="/">Go back</a></p>
+           `, message)
+   return nil
+}
+```
+
+### Creating an engine through a builder
 
 ```go
-engine := we.New()
+engine := we.New().
+   HandleMethod("GET", "/", home). // GET handler for root path
+   HandleMethod("GET", "/hello", hello). // GET handler for /hello
+   HandleMethod("GET", "/about", about). // GET handler for /about
+   HandleMethod("POST", "/submit", processForm). // POST handler for /submit - handles form submission
+   Build() // and build the configured engine
 ```
 
 ### Registering Handlers
 
 **GET Handler:**
 ```go
-engine.HandleMethod("GET", "/", func(w http.ResponseWriter, scope we.RequestScope) error {
-    w.Write([]byte("Hello!"))
-    return nil
-})
+   HandleMethod("GET", "/", home). // GET handler for root path
 ```
 
 **POST Handler:**
 ```go
-engine.HandleMethod("POST", "/greet", func(w http.ResponseWriter, scope we.RequestScope) error {
-    scope.Request().ParseForm()
-    name := scope.Request().FormValue("name")
-    // ... handle the form data
-    return nil
+   HandleMethod("POST", "/submit", processForm). // POST handler for /submit - handles form submission
 })
 ```
 

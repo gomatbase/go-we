@@ -10,14 +10,10 @@ import (
 	"github.com/gomatbase/go-we"
 )
 
-func main() {
-	// Create a new web engine
-	engine := we.New()
-
-	// GET handler for root path - displays a simple HTML page with links and a form
-	engine.HandleMethod("GET", "/", func(w http.ResponseWriter, scope we.RequestScope) error {
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `
+// home handler - displays a simple HTML page with links and a form
+func home(w http.ResponseWriter, scope we.RequestScope) error {
+	w.Header().Set("Content-Type", "text/html")
+	_, _ = fmt.Fprintf(w, `
 			<h1>Welcome to Go-We!</h1>
 			<p>This is a basic routing example.</p>
 			<ul>
@@ -30,37 +26,46 @@ func main() {
 				<button type="submit">Submit (POST)</button>
 			</form>
 		`)
-		return nil
-	})
+	return nil
+}
 
-	// GET handler for /hello - returns a plain text greeting
-	engine.HandleMethod("GET", "/hello", func(w http.ResponseWriter, scope we.RequestScope) error {
-		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintf(w, "Hello from Go-We!")
-		return nil
-	})
+// hello handler - returns a plain text greeting
+func hello(w http.ResponseWriter, scope we.RequestScope) error {
+	w.Header().Set("Content-Type", "text/plain")
+	_, _ = fmt.Fprintf(w, "Hello from Go-We!")
+	return nil
+}
 
-	// GET handler for /about - returns information about the framework
-	engine.HandleMethod("GET", "/about", func(w http.ResponseWriter, scope we.RequestScope) error {
-		w.Header().Set("Content-Type", "text/plain")
-		fmt.Fprintf(w, "Go-We is a lightweight web framework for Go")
-		return nil
-	})
+// about handler - returns information about the framework
+func about(w http.ResponseWriter, scope we.RequestScope) error {
+	w.Header().Set("Content-Type", "text/plain")
+	_, _ = fmt.Fprintf(w, "Go-We is a lightweight web framework for Go")
+	return nil
+}
 
-	// POST handler for /submit - handles form submission
-	engine.HandleMethod("POST", "/submit", func(w http.ResponseWriter, scope we.RequestScope) error {
-		// Parse form data from the request
-		scope.Request().ParseForm()
-		message := scope.Request().FormValue("message")
+// processForm handler - handles form submission
+func processForm(w http.ResponseWriter, scope we.RequestScope) error {
+	// Parse form data from the request
+	_ = scope.Request().ParseForm()
+	message := scope.Request().FormValue("message")
 
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `
+	w.Header().Set("Content-Type", "text/html")
+	_, _ = fmt.Fprintf(w, `
 			<h1>Form Submitted!</h1>
 			<p>Your message: <strong>%s</strong></p>
 			<p><a href="/">Go back</a></p>
 		`, message)
-		return nil
-	})
+	return nil
+}
+
+func main() {
+	// Create a new web engine builder and define routes and handlers
+	engine := we.New().
+		HandleMethod("GET", "/", home).               // GET handler for root path
+		HandleMethod("GET", "/hello", hello).         // GET handler for /hello
+		HandleMethod("GET", "/about", about).         // GET handler for /about
+		HandleMethod("POST", "/submit", processForm). // POST handler for /submit - handles form submission
+		Build()                                       // and build the configured engine
 
 	// Start the server on port 8080
 	fmt.Println("Server starting on http://localhost:8080")
