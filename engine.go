@@ -19,6 +19,10 @@ import (
 	"github.com/gomatbase/go-we/pathTree"
 )
 
+const (
+	DefaultReadHeaderTimeout = 2 * time.Second
+)
+
 // RequestScope is a wrapper for an incoming http.Request, providing additional methods to simplify usage and access to
 // request attributes, parameters, path variables and session values.
 type RequestScope interface {
@@ -173,34 +177,24 @@ type Filter interface {
 	Filter(http.Header, RequestScope) error
 }
 
-// WebEngine defines the main methods provided by a go-we engine
-type WebEngine interface {
-	// SetSessionManager sets the session manager to be used by the engine. Setting a session manager implicitly enables sessions
-	SetSessionManager(sessionManager SessionManager)
-	// HookShutdownFunction expects a pointer to a function which will be set with function that can be called for an immediate shutdown
-	HookShutdownFunction(shutdown *func() error)
-	// HookGraciousShutdownFunction expects a pointer to a function which will be set with function that can be called
-	// for a gracious shutdown, waiting up to waitingTime until it forces the listener to shutdown
-	HookGraciousShutdownFunction(shutdown *func(waitingTime time.Duration) error)
-	// Handle registers a handler for a path. The handler will be called for all HTTP methods
-	Handle(path string, handler HandlerFunction)
-	// HandleMethod registers a handler for a path and a specific HTTP method. functions registered by HandleMethod
-	// will take precedence over any function registered by Handle for the same path.
-	HandleMethod(method string, path string, handler HandlerFunction)
-	// AddFilter registers a filter to be applied to all incoming requests. Filters are applied in the order they are registered
-	AddFilter(filter Filter)
+// Engine defines the main methods provided by a go-we engine
+type Engine interface {
+	http.Handler
+	// Shutdown may be called for an immediate shutdown. If the server is not managed by the engine (for example, if
+	// the engine is embedded in an independently configured http server) this method will return an error (as it
+	// won't be managing the listener)
+	Shutdown() error
+	// GraciouslyShutdown may be called to graciously shutdown the server, waiting for any hanging handlers to finish
+	// for up to the provided waiting time. If the server is not managed by the engine (for example, if the engine is
+	// embedded in an independently configured http server) this method will return an error (as it won't be managing
+	// the listener)
+	GraciouslyShutdown(waitingTime time.Duration) error
 	// Listen starts the engine listening on the provided address. The engine will block until the server is stopped.
 	Listen(addr string) error
-	// ListenWithTls starts the engine listening on the provided address using https. A certificate and key file locations must be provided.
-	ListenWithTls(addr string, certFile string, keyFile string) error
-	// ListenWithTlsOptions starts the engine listening on the provided address using https. The full tls configuration must be provided.
-	ListenWithTlsOptions(addr string, config *tls.Config) error
-	// Handler returns the http.Handler implementation for the engine. This can be used to embed the engine in another standard http server configured independently
-	Handler() http.Handler
 }
 
-// webEngine is a WebEngine implementation
-type webEngine struct {
+// engine is a Engine implementation
+type engine struct {
 	// List of filters to be applied to incoming requests
 	filters []Filter
 	// Map of path trees for each HTTP method having a registered handler function
@@ -211,96 +205,85 @@ type webEngine struct {
 	errorHandler ErrorHandler
 	// the server the engine is running on, if managed by the engine itself (with Listen* methods)
 	server *http.Server
+	// HTTP server timeout configurations
+	readHeaderTimeout time.Duration
+	readTimeout       time.Duration
+	writeTimeout      time.Duration
+	idleTimeout       time.Duration
+	maxHeaderBytes    int
 }
 
-// HookShutdownFunction updates the provided function placeholder with a function that can graciously shutdown the server
-func (wc *webEngine) HookShutdownFunction(shutdown *func() error) {
-	*shutdown = func() error {
-		if wc.server == nil {
-			return fmt.Errorf("listener not managed by engine")
-		}
-		return wc.server.Close()
+// Shutdown immediately shuts down the server. If the server is not managed by the engine (if the engine
+// is embedded in an independently configured http server or simply not started) this method will return an error.
+func (wc *engine) Shutdown() error {
+	if wc.server == nil {
+		return fmt.Errorf("listener not managed by engine")
 	}
+	return wc.server.Close()
 }
 
-// HookGraciousShutdownFunction updates the provided function placeholder with a function that can graciously shutdown the server
-func (wc *webEngine) HookGraciousShutdownFunction(shutdown *func(time.Duration) error) {
-	*shutdown = func(waitingTime time.Duration) error {
-		if wc.server == nil {
-			return fmt.Errorf("listener not managed by engine")
-		}
-		timingOutContext, cancel := context.WithTimeout(context.Background(), waitingTime)
-		e := wc.server.Shutdown(timingOutContext)
-		if errors.Is(e, context.DeadlineExceeded) {
-			// Even after the deadline the server will graciously wait for any hanging handlers to finish. We forcely close the channels
-			// attach any additional error that the close may have raised
-			e = errors.Join(e, wc.server.Close())
-		}
-		cancel() // sanity cleanup
-		return e
+// GraciouslyShutdown graciously shuts down the server if it's managed by the engine, waiting for any hanging handlers
+// to finish for up to the provided waiting time. If the server is not managed by the engine (if the engine is
+// embedded in an independently configured http server or simply not started) this method will return an error.
+func (wc *engine) GraciouslyShutdown(waitingTime time.Duration) error {
+	if wc.server == nil {
+		return fmt.Errorf("listener not managed by engine")
 	}
-}
-
-// Handle registers a handler for a path. The handler will be called for all HTTP methods
-func (wc *webEngine) Handle(path string, handler HandlerFunction) {
-	wc.HandleMethod("ALL", path, handler)
-}
-
-// HandleMethod registers a handler for a path and a specific HTTP method. functions registered by HandleMethod
-// will take precedence over any function registered by Handle for the same path.
-func (wc *webEngine) HandleMethod(method string, path string, handler HandlerFunction) {
-	tree, found := wc.matchTrees[method]
-	if !found {
-		tree = pathTree.New[HandlerFunction]()
-		wc.matchTrees[method] = tree
+	timingOutContext, cancel := context.WithTimeout(context.Background(), waitingTime)
+	e := wc.server.Shutdown(timingOutContext)
+	if errors.Is(e, context.DeadlineExceeded) {
+		// Even after the deadline the server will graciously wait for any hanging handlers to finish. We forcibly
+		// close the channels and attach any additional error that the close may have raised
+		e = errors.Join(e, wc.server.Close())
 	}
-	if e := tree.Add(path, handler); e != nil {
-		panic(e)
-	}
-}
-
-// AddFilter registers a filter to be applied to all incoming requests. Filters are applied in the order they are registered
-func (wc *webEngine) AddFilter(filter Filter) {
-	wc.filters = append(wc.filters, filter)
-}
-
-// SetSessionManager sets the session manager to be used by the engine. Setting a session manager implicitly enables sessions
-func (wc *webEngine) SetSessionManager(sessionManager SessionManager) {
-	wc.sessionManager = sessionManager
+	cancel() // sanity cleanup
+	return e
 }
 
 // Listen starts the engine listening on the provided address. The engine will block until the server is stopped.
-func (wc *webEngine) Listen(addr string) error {
+func (wc *engine) Listen(addr string) error {
 	fmt.Println("Listening on", addr)
 	wc.server = &http.Server{
 		Addr:              addr,
-		Handler:           wc.Handler(),
-		ReadHeaderTimeout: 10 * time.Second, // Prevent Slowloris attacks
+		Handler:           wc,
+		ReadHeaderTimeout: wc.readHeaderTimeout,
+		ReadTimeout:       wc.readTimeout,
+		WriteTimeout:      wc.writeTimeout,
+		IdleTimeout:       wc.idleTimeout,
+		MaxHeaderBytes:    wc.maxHeaderBytes,
 	}
 	return wc.server.ListenAndServe()
 }
 
 // ListenWithTls starts the engine listening on the provided address using https. A certificate and key file locations must be provided.
-func (wc *webEngine) ListenWithTls(addr string, certFile string, keyFile string) error {
+func (wc *engine) ListenWithTls(addr string, certFile string, keyFile string) error {
 	fmt.Println("Listening tls on", addr)
 	wc.server = &http.Server{
 		Addr:              addr,
-		Handler:           wc.Handler(),
-		ReadHeaderTimeout: 10 * time.Second, // Prevent Slowloris attacks
+		Handler:           wc,
+		ReadHeaderTimeout: wc.readHeaderTimeout,
+		ReadTimeout:       wc.readTimeout,
+		WriteTimeout:      wc.writeTimeout,
+		IdleTimeout:       wc.idleTimeout,
+		MaxHeaderBytes:    wc.maxHeaderBytes,
 	}
 	return wc.server.ListenAndServeTLS(certFile, keyFile)
 }
 
 // ListenWithTlsOptions starts the engine listening on the provided address using https. The full tls configuration must be provided.
-func (wc *webEngine) ListenWithTlsOptions(addr string, config *tls.Config) error {
+func (wc *engine) ListenWithTlsOptions(addr string, config *tls.Config) error {
 	if config == nil {
 		return fmt.Errorf("tls config is nil")
 	}
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           wc.Handler(),
-		ReadHeaderTimeout: 10 * time.Second, // Prevent Slowloris attacks
+		Handler:           wc,
+		ReadHeaderTimeout: wc.readHeaderTimeout,
+		ReadTimeout:       wc.readTimeout,
+		WriteTimeout:      wc.writeTimeout,
+		IdleTimeout:       wc.idleTimeout,
+		MaxHeaderBytes:    wc.maxHeaderBytes,
 	}
 	l, e := net.Listen("tcp", addr)
 	if e != nil {
@@ -312,22 +295,10 @@ func (wc *webEngine) ListenWithTlsOptions(addr string, config *tls.Config) error
 	return srv.Serve(tls.NewListener(l, config))
 }
 
-// Handler returns the http.Handler implementation for the engine. This can be used to embed the engine in another standard http server configured independently
-func (wc *webEngine) Handler() http.Handler {
-	if wc.errorHandler == nil {
-		wc.errorHandler = &errorHandler{
-			errorCatalog:   make(map[string]ErrorHandler),
-			weErrorCatalog: make(map[int]ErrorHandler),
-			marshaller:     ErrorMarshallerFunction(defaultErrorMarshaller),
-		}
-	}
-	return http.HandlerFunc(wc.process)
-}
-
 // findHandler checks if there are any handlers registered to handle the request path, in which case it will
 // also parse the path for any path variables defined. It returns both the handler and the path variables, which
 // may be null if the path has no variables defined.
-func (wc *webEngine) findHandler(r *http.Request) (handler *HandlerFunction, variables map[string]string) {
+func (wc *engine) findHandler(r *http.Request) (handler *HandlerFunction, variables map[string]string) {
 	method := r.Method
 	pt, found := wc.matchTrees[method]
 	if !found {
@@ -345,15 +316,15 @@ func (wc *webEngine) findHandler(r *http.Request) (handler *HandlerFunction, var
 	return
 }
 
-// process actually handles incoming requests.
+// ServeHTTP handles incoming requests.
 //
 // It starts by wrapping the response writer with the go-we writer which allows checking if the response has
 // already started to be written. This will be used to be able to graciously handle redirections or any other
 // flow interruption, as is the case of errors raised.
 //
 // A request scope is then created to wrap the incoming http.Request. The request scope is always initialized
-// with a fresh set of request scope attributes, and if a sessions are enabled, either create a new session or
-// attach an existing session (found through the session manager which will typically use a session cookie).
+// with a fresh set of request scope attributes, and if sessions are enabled, either create a new session or
+// attach an existing session, found through the session manager which will typically use a session cookie.
 //
 // Filters are then applied in registration order, and it may return an event to interrupt the normal flow of the
 // request. Events can be errors or simply flow interruptions, like redirections or requests to break the filter chain.
@@ -365,7 +336,7 @@ func (wc *webEngine) findHandler(r *http.Request) (handler *HandlerFunction, var
 // Failure to find a suitable handle will result in a not found event which will be handled by the error manager.
 //
 // Any event/error returned by the handler will be handled by the error manager.
-func (wc *webEngine) process(w http.ResponseWriter, r *http.Request) {
+func (wc *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	rw := &responseWriter{httpResponseWriter: w}
 	defer func() {
@@ -433,19 +404,153 @@ loop:
 
 }
 
-// New creates and returns a new WebEngine instance with default configuration.
-// The engine implements http.Handler and can be used as a drop-in replacement for http.DefaultServeMux.
+// EngineBuilder provides a fluent interface for configuring and creating a Engine
+type EngineBuilder interface {
+	// Handle registers a handler for a path. The handler will be called for all HTTP methods
+	Handle(path string, handler HandlerFunction) EngineBuilder
+	// HandleMethod registers a handler for a path and a specific HTTP method. functions registered by HandleMethod
+	// will take precedence over any function registered by Handle for the same path.
+	HandleMethod(method string, path string, handler HandlerFunction) EngineBuilder
+	// Filter registers a filter to be applied to all incoming requests. Filters are applied in the order they are registered
+	Filter(filter Filter) EngineBuilder
+	// SessionManager sets the session manager to be used by the engine
+	SessionManager(sessionManager SessionManager) EngineBuilder
+	// ErrorHandler sets a custom error handler for the engine
+	ErrorHandler(errorHandler ErrorHandler) EngineBuilder
+	// ReadHeaderTimeout sets the timeout for reading request headers (default: 10 seconds)
+	ReadHeaderTimeout(timeout time.Duration) EngineBuilder
+	// ReadTimeout sets the maximum duration for reading the entire request
+	ReadTimeout(timeout time.Duration) EngineBuilder
+	// WriteTimeout sets the maximum duration before timing out writes of the response
+	WriteTimeout(timeout time.Duration) EngineBuilder
+	// IdleTimeout sets the maximum amount of time to wait for the next request
+	IdleTimeout(timeout time.Duration) EngineBuilder
+	// MaxHeaderBytes sets the maximum size of request headers
+	MaxHeaderBytes(bytes int) EngineBuilder
+	// Build creates and returns the configured Engine
+	Build() Engine
+}
+
+// engineBuilder is the EngineBuilder implementation
+type engineBuilder struct {
+	engine            *engine
+	sessionManager    SessionManager
+	errorHandler      ErrorHandler
+	readHeaderTimeout time.Duration
+	readTimeout       time.Duration
+	writeTimeout      time.Duration
+	idleTimeout       time.Duration
+	maxHeaderBytes    int
+}
+
+// Handle registers a handler for a path. The handler will be called for all HTTP methods
+func (eb *engineBuilder) Handle(path string, handler HandlerFunction) EngineBuilder {
+	return eb.HandleMethod("ALL", path, handler)
+}
+
+// HandleMethod registers a handler for a path and a specific HTTP method. functions registered by HandleMethod
+// will take precedence over any function registered by Handle for the same path.
+func (eb *engineBuilder) HandleMethod(method string, path string, handler HandlerFunction) EngineBuilder {
+	tree, found := eb.engine.matchTrees[method]
+	if !found {
+		tree = pathTree.New[HandlerFunction]()
+		eb.engine.matchTrees[method] = tree
+	}
+	if e := tree.Add(path, handler); e != nil {
+		panic(e)
+	}
+	return eb
+}
+
+// Filter registers a filter to be applied to all incoming requests. Filters are applied in the order they are
+// registered
+func (eb *engineBuilder) Filter(filter Filter) EngineBuilder {
+	eb.engine.filters = append(eb.engine.filters, filter)
+	return eb
+}
+
+// SetSessionManager sets the session manager to be used by the engine. Setting a session manager implicitly enables sessions
+func (eb *engineBuilder) SessionManager(sessionManager SessionManager) EngineBuilder {
+	eb.engine.sessionManager = sessionManager
+	return eb
+}
+
+// ErrorHandler sets a custom error handler for the engine
+func (eb *engineBuilder) ErrorHandler(errorHandler ErrorHandler) EngineBuilder {
+	eb.errorHandler = errorHandler
+	return eb
+}
+
+// ReadHeaderTimeout sets the timeout for reading request headers
+func (eb *engineBuilder) ReadHeaderTimeout(timeout time.Duration) EngineBuilder {
+	if timeout < 0 {
+		panic(errors.New("read header timeout must be >= 0"))
+	}
+	eb.readHeaderTimeout = timeout
+	return eb
+}
+
+// ReadTimeout sets the maximum duration for reading the entire request
+func (eb *engineBuilder) ReadTimeout(timeout time.Duration) EngineBuilder {
+	if timeout <= 0 {
+		panic("read timeout must be > 0")
+	}
+	eb.readTimeout = timeout
+	return eb
+}
+
+// WriteTimeout sets the maximum duration before timing out writes of the response
+func (eb *engineBuilder) WriteTimeout(timeout time.Duration) EngineBuilder {
+	if timeout <= 0 {
+		panic("write timeout must be > 0")
+	}
+	eb.writeTimeout = timeout
+	return eb
+}
+
+// IdleTimeout sets the maximum amount of time to wait for the next request
+func (eb *engineBuilder) IdleTimeout(timeout time.Duration) EngineBuilder {
+	if timeout <= 0 {
+		panic("idle timeout must be > 0")
+	}
+	eb.idleTimeout = timeout
+	return eb
+}
+
+// MaxHeaderBytes sets the maximum size of request headers
+func (eb *engineBuilder) MaxHeaderBytes(bytes int) EngineBuilder {
+	if bytes <= 0 {
+		panic("max header bytes must be > 0")
+	}
+	eb.maxHeaderBytes = bytes
+	return eb
+}
+
+// Build creates and returns the configured Engine
+func (eb *engineBuilder) Build() Engine {
+	if eb.engine.errorHandler == nil {
+		eb.engine.errorHandler = &errorHandler{
+			errorCatalog:   make(map[string]ErrorHandler),
+			weErrorCatalog: make(map[int]ErrorHandler),
+			marshaller:     ErrorMarshallerFunction(defaultErrorMarshaller),
+		}
+	}
+
+	return eb.engine
+}
+
+// New returns an EngineBuilder for configuring and creating an Engine.
 //
-// Example:
-//
-//	engine := we.New()
-//	engine.Handle("/", func(w http.ResponseWriter, scope we.RequestScope) error {
-//	    w.Write([]byte("Hello, World!"))
-//	    return nil
-//	})
-//	engine.Listen(":8080")
-func New() WebEngine {
-	return &webEngine{
-		matchTrees: map[string]pathTree.Tree[HandlerFunction]{"ALL": pathTree.New[HandlerFunction]()},
+//	engine := we.New().
+//		ReadHeaderTimeout(15 * time.Second).
+//		SessionManager(mySessionManager).
+//		Build()
+func New() EngineBuilder {
+	return &engineBuilder{
+		engine: &engine{
+			matchTrees:        map[string]pathTree.Tree[HandlerFunction]{"ALL": pathTree.New[HandlerFunction]()},
+			readHeaderTimeout: DefaultReadHeaderTimeout,
+			maxHeaderBytes:    http.DefaultMaxHeaderBytes,
+		},
 	}
 }

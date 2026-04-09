@@ -57,14 +57,7 @@ func newWaitingChannel() waitingChannel {
 	return make(chan bool, 1)
 }
 
-func newServer() (we.WebEngine, func() error) {
-	var shutdown func() error
-	engine := we.New()
-	engine.HookShutdownFunction(&shutdown)
-	return engine, shutdown
-}
-
-func start(engine we.WebEngine) string {
+func start(engine we.Engine) string {
 	port, portStr := nextPort()
 	go engine.Listen(portStr)
 	waitForServer(port)
@@ -80,29 +73,23 @@ func simpleHandler(response string) func(writer http.ResponseWriter, request we.
 
 func TestWebEngineShutdown(t *testing.T) {
 	t.Run("Test Shutdown on engine with unmanaged listener", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
+		engine := we.New().Build()
 
-		if shutdown() == nil {
+		if engine.Shutdown() == nil {
 			t.Error("Expected error on shutdown with unmanaged listener")
 		}
 	})
 	t.Run("Test Gracious Shutdown on engine with unmanaged listener", func(t *testing.T) {
-		var shutdown func(timeout time.Duration) error
-		engine := we.New()
-		engine.HookGraciousShutdownFunction(&shutdown)
+		engine := we.New().Build()
 
-		if shutdown(time.Minute) == nil {
+		if engine.GraciouslyShutdown(time.Minute) == nil {
 			t.Error("Expected error on shutdown with unmanaged listener")
 		}
 	})
 	t.Run("Test Shutdown on engine", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 		handlerThreadControl := newWaitingChannel()
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			handlerThreadControl.Wait(time.Second * 10)
 			_, _ = w.Write([]byte("success"))
 			return nil
@@ -111,6 +98,7 @@ func TestWebEngineShutdown(t *testing.T) {
 		var serverError error
 		serverThreadControl := newWaitingChannel()
 		port, portStr := nextPort()
+		engine := builder.Build()
 		go func() {
 			serverError = engine.Listen(portStr)
 			serverThreadControl.Signal()
@@ -130,7 +118,7 @@ func TestWebEngineShutdown(t *testing.T) {
 		clientThreadControl.Wait(time.Minute)
 		time.Sleep(time.Millisecond * 100)
 
-		if e := shutdown(); e != nil {
+		if e := engine.Shutdown(); e != nil {
 			t.Error("Expected shutdown to return no errors", e)
 		}
 
@@ -152,12 +140,10 @@ func TestWebEngineShutdown(t *testing.T) {
 			t.Error("Expected server closed return error")
 		}
 	})
-	t.Run("Test Timed-out Gracious Shutdown on engine", func(t *testing.T) {
-		var shutdown func(timeout time.Duration) error
-		engine := we.New()
-		engine.HookGraciousShutdownFunction(&shutdown)
+	t.Run("Test Timed-out Gracious Shutdown on builder", func(t *testing.T) {
+		builder := we.New()
 		handlerThreadControl := newWaitingChannel()
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			handlerThreadControl.Wait(time.Minute)
 			_, _ = w.Write([]byte("success"))
 			return nil
@@ -166,6 +152,7 @@ func TestWebEngineShutdown(t *testing.T) {
 		var serverError error
 		serverThreadControl := newWaitingChannel()
 		port, portStr := nextPort()
+		engine := builder.Build()
 		go func() {
 			serverError = engine.Listen(portStr)
 			serverThreadControl.Signal()
@@ -185,7 +172,7 @@ func TestWebEngineShutdown(t *testing.T) {
 		clientThreadControl.Wait(time.Minute)
 		time.Sleep(time.Millisecond * 100)
 
-		if !errors.Is(shutdown(time.Second), context.DeadlineExceeded) {
+		if !errors.Is(engine.GraciouslyShutdown(time.Second), context.DeadlineExceeded) {
 			t.Error("Expected shutdown to return a timeout error")
 		}
 
@@ -207,12 +194,10 @@ func TestWebEngineShutdown(t *testing.T) {
 			t.Error("Expected server closed return error")
 		}
 	})
-	t.Run("Test Gracious Shutdown on engine", func(t *testing.T) {
-		var shutdown func(timeout time.Duration) error
-		engine := we.New()
-		engine.HookGraciousShutdownFunction(&shutdown)
+	t.Run("Test Gracious Shutdown on builder", func(t *testing.T) {
+		builder := we.New()
 		handlerThreadControl := newWaitingChannel()
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			handlerThreadControl.Wait(time.Minute)
 			time.Sleep(time.Second)
 			_, _ = w.Write([]byte("success"))
@@ -222,6 +207,7 @@ func TestWebEngineShutdown(t *testing.T) {
 		var serverError error
 		serverThreadControl := newWaitingChannel()
 		port, portStr := nextPort()
+		engine := builder.Build()
 		go func() {
 			serverError = engine.Listen(portStr)
 			serverThreadControl.Signal()
@@ -242,7 +228,7 @@ func TestWebEngineShutdown(t *testing.T) {
 		time.Sleep(time.Millisecond * 100)
 
 		handlerThreadControl.Signal()
-		if e := shutdown(time.Minute); e != nil {
+		if e := engine.GraciouslyShutdown(time.Minute); e != nil {
 			t.Error("Expected shutdown to return without errors:", e)
 		}
 
@@ -261,10 +247,11 @@ func TestWebEngineShutdown(t *testing.T) {
 	})
 }
 
-func TestWebEngineSimpleUse(t *testing.T) {
+func TestWebbuilderSimpleUse(t *testing.T) {
 	t.Run("Test successful simple request handling", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.Handle("/", simpleHandler("success"))
+		builder := we.New()
+		builder.Handle("/", simpleHandler("success"))
+		engine := builder.Build()
 		portStr := start(engine)
 
 		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
@@ -274,16 +261,17 @@ func TestWebEngineSimpleUse(t *testing.T) {
 			t.Error("Expected no client error:", e)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
-func TestWebEnginePathHandling(t *testing.T) {
+func TestWebbuilderPathHandling(t *testing.T) {
 	t.Run("Test plain path handling", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.Handle("/", simpleHandler("success"))
-		engine.Handle("/somewhere", simpleHandler("success2"))
+		builder := we.New()
+		builder.Handle("/", simpleHandler("success"))
+		builder.Handle("/somewhere", simpleHandler("success2"))
 
+		engine := builder.Build()
 		portStr := start(engine)
 
 		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere", portStr)).Get()
@@ -307,13 +295,14 @@ func TestWebEnginePathHandling(t *testing.T) {
 			t.Error("Expected a 404 response for unhandled path:", e)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 	t.Run("Test path with variables handling", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.Handle("/{var}", simpleHandler("success"))
-		engine.Handle("/{var}/somewhere", simpleHandler("success2"))
+		builder := we.New()
+		builder.Handle("/{var}", simpleHandler("success"))
+		builder.Handle("/{var}/somewhere", simpleHandler("success2"))
 
+		engine := builder.Build()
 		portStr := start(engine)
 
 		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere", portStr)).Get()
@@ -344,12 +333,13 @@ func TestWebEnginePathHandling(t *testing.T) {
 			t.Error("Expected a 404 response for unhandled path:", e)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 	t.Run("Test wildcard handling", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.Handle("/*", simpleHandler("success"))
+		builder := we.New()
+		builder.Handle("/*", simpleHandler("success"))
 
+		engine := builder.Build()
 		portStr := start(engine)
 
 		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere", portStr)).Get()
@@ -374,12 +364,13 @@ func TestWebEnginePathHandling(t *testing.T) {
 			t.Error("Expected a 404 response for unhandled path:", e)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 	t.Run("Test double wildcard handling", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.Handle("/**", simpleHandler("success"))
+		builder := we.New()
+		builder.Handle("/**", simpleHandler("success"))
 
+		engine := builder.Build()
 		portStr := start(engine)
 
 		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere", portStr)).Get()
@@ -404,15 +395,16 @@ func TestWebEnginePathHandling(t *testing.T) {
 			t.Error("Expected success handler response for root path", string(bytes))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 	t.Run("Test path handling precedence", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.Handle("/somewhere/specific", simpleHandler("fixed path"))
-		engine.Handle("/{var}/specific", simpleHandler("variable"))
-		engine.Handle("/*/*", simpleHandler("wildcard"))
-		engine.Handle("/**", simpleHandler("double wildcard"))
+		builder := we.New()
+		builder.Handle("/somewhere/specific", simpleHandler("fixed path"))
+		builder.Handle("/{var}/specific", simpleHandler("variable"))
+		builder.Handle("/*/*", simpleHandler("wildcard"))
+		builder.Handle("/**", simpleHandler("double wildcard"))
 
+		engine := builder.Build()
 		portStr := start(engine)
 
 		bytes, e := test.Request(fmt.Sprintf("http://localhost%s/somewhere/specific", portStr)).Get()
@@ -443,14 +435,14 @@ func TestWebEnginePathHandling(t *testing.T) {
 			t.Error("Expected double wildcard handler response", string(bytes))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestRequestScopeMethods(t *testing.T) {
 	t.Run("Test path variables", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.Handle("/user/{id}/profile/{section}", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder := we.New()
+		builder.Handle("/user/{id}/profile/{section}", func(w http.ResponseWriter, r we.RequestScope) error {
 			id := r.Var("id")
 			section := r.Var("section")
 			missing := r.Var("missing")
@@ -475,6 +467,7 @@ func TestRequestScopeMethods(t *testing.T) {
 			return nil
 		})
 
+		engine := builder.Build()
 		portStr := start(engine)
 		result, e := test.Request(fmt.Sprintf("http://localhost%s/user/123/profile/settings", portStr)).Get()
 
@@ -484,12 +477,12 @@ func TestRequestScopeMethods(t *testing.T) {
 			t.Error("Handler error:", string(result))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 
 	t.Run("Test query parameters", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.Handle("/search", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder := we.New()
+		builder.Handle("/search", func(w http.ResponseWriter, r we.RequestScope) error {
 			q := r.Parameter("q")
 			missing := r.Parameter("missing")
 
@@ -531,6 +524,7 @@ func TestRequestScopeMethods(t *testing.T) {
 			return nil
 		})
 
+		engine := builder.Build()
 		portStr := start(engine)
 		result, e := test.Request(fmt.Sprintf("http://localhost%s/search?q=golang&tag=web&tag=framework", portStr)).Get()
 
@@ -540,17 +534,17 @@ func TestRequestScopeMethods(t *testing.T) {
 			t.Error("Handler error:", string(result))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 
 	t.Run("Test request scope attributes", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder := we.New()
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			r.Set("userId", "user123")
 			r.Set("role", "admin")
 			return nil
 		}))
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			userId := r.Get("userId")
 			role := r.Get("role")
 			missing := r.Get("missing")
@@ -566,6 +560,7 @@ func TestRequestScopeMethods(t *testing.T) {
 			return nil
 		})
 
+		engine := builder.Build()
 		portStr := start(engine)
 		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
 
@@ -575,17 +570,17 @@ func TestRequestScopeMethods(t *testing.T) {
 			t.Error("Handler error:", string(result))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 
 	t.Run("Test session attributes", func(t *testing.T) {
-		engine, shutdown := newServer()
+		builder := we.New()
 		sessionManager := we.DefaultSessionManager().
 			CookieSecure(false).
 			Build()
-		engine.SetSessionManager(sessionManager)
+		builder.SessionManager(sessionManager)
 
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			if !r.HasSession() {
 				return fmt.Errorf("expected session to be present")
 			}
@@ -609,6 +604,7 @@ func TestRequestScopeMethods(t *testing.T) {
 			return nil
 		})
 
+		engine := builder.Build()
 		portStr := start(engine)
 		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
 
@@ -618,12 +614,12 @@ func TestRequestScopeMethods(t *testing.T) {
 			t.Error("Handler error:", string(result))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 
 	t.Run("Test Request and Context methods", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder := we.New()
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			req := r.Request()
 			ctx := r.Context()
 
@@ -641,6 +637,7 @@ func TestRequestScopeMethods(t *testing.T) {
 			return nil
 		})
 
+		engine := builder.Build()
 		portStr := start(engine)
 		result, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).Get()
 
@@ -650,18 +647,19 @@ func TestRequestScopeMethods(t *testing.T) {
 			t.Error("Handler error:", string(result))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
-func TestWebEngineMethodHandling(t *testing.T) {
+func TestWebbuilderMethodHandling(t *testing.T) {
 	t.Run("Test HandleMethod routing", func(t *testing.T) {
-		engine, shutdown := newServer()
-		engine.HandleMethod(http.MethodGet, "/resource", simpleHandler("GET response"))
-		engine.HandleMethod(http.MethodPost, "/resource", simpleHandler("POST response"))
-		engine.HandleMethod(http.MethodPut, "/resource", simpleHandler("PUT response"))
-		engine.HandleMethod(http.MethodDelete, "/resource", simpleHandler("DELETE response"))
+		builder := we.New()
+		builder.HandleMethod(http.MethodGet, "/resource", simpleHandler("GET response"))
+		builder.HandleMethod(http.MethodPost, "/resource", simpleHandler("POST response"))
+		builder.HandleMethod(http.MethodPut, "/resource", simpleHandler("PUT response"))
+		builder.HandleMethod(http.MethodDelete, "/resource", simpleHandler("DELETE response"))
 
+		engine := builder.Build()
 		portStr := start(engine)
 
 		result, e := test.Request(fmt.Sprintf("http://localhost%s/resource", portStr)).Get()
@@ -682,22 +680,23 @@ func TestWebEngineMethodHandling(t *testing.T) {
 			t.Error("Unexpected POST response:", string(body))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
-func TestWebEngineFilterHandling(t *testing.T) {
+func TestWebbuilderFilterHandling(t *testing.T) {
 	t.Run("Test filter can set headers", func(t *testing.T) {
-		engine, shutdown := newServer()
+		builder := we.New()
 
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			h.Set("X-Custom-Header", "test-value")
 			h.Set("X-Request-Id", "12345")
 			return nil
 		}))
 
-		engine.Handle("/", simpleHandler("success"))
+		builder.Handle("/", simpleHandler("success"))
 
+		engine := builder.Build()
 		portStr := start(engine)
 		resp, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
 
@@ -709,18 +708,19 @@ func TestWebEngineFilterHandling(t *testing.T) {
 			t.Error("Expected X-Request-Id to be set")
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 
 	t.Run("Test filter error stops request", func(t *testing.T) {
-		engine, shutdown := newServer()
+		builder := we.New()
 
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			return events.UnauthorizedError
 		}))
 
-		engine.Handle("/", simpleHandler("should not reach here"))
+		builder.Handle("/", simpleHandler("should not reach here"))
 
+		engine := builder.Build()
 		portStr := start(engine)
 		resp, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
 
@@ -730,19 +730,19 @@ func TestWebEngineFilterHandling(t *testing.T) {
 			t.Error("Expected 401 status code, got:", resp.StatusCode)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 
 	t.Run("Test multiple filters execute in order", func(t *testing.T) {
-		engine, shutdown := newServer()
+		builder := we.New()
 
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			h.Set("X-Filter-1", "executed")
 			r.Set("filter1", true)
 			return nil
 		}))
 
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			if r.Get("filter1") != true {
 				return fmt.Errorf("filter1 should have executed first")
 			}
@@ -750,7 +750,7 @@ func TestWebEngineFilterHandling(t *testing.T) {
 			return nil
 		}))
 
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			if r.Get("filter1") != true {
 				return fmt.Errorf("filter1 did not execute")
 			}
@@ -758,6 +758,7 @@ func TestWebEngineFilterHandling(t *testing.T) {
 			return nil
 		})
 
+		engine := builder.Build()
 		portStr := start(engine)
 		resp, e := test.Request(fmt.Sprintf("http://localhost%s", portStr)).DoWithResponse(http.MethodGet)
 
@@ -774,20 +775,19 @@ func TestWebEngineFilterHandling(t *testing.T) {
 			t.Error("Handler did not execute properly")
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
-func TestWebEngineDefaultErrorHandling(t *testing.T) {
+func TestWebbuilderDefaultErrorHandling(t *testing.T) {
 	t.Run("Test simple application error", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder := we.New()
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return fmt.Errorf("applicational error")
 		})
 
 		port, portStr := nextPort()
+		engine := builder.Build()
 		go engine.Listen(portStr)
 		waitForServer(port)
 
@@ -802,17 +802,16 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 			t.Error("Expected empty response body for unhandled error", string(bytes))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 	t.Run("Test uncaught panic", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder := we.New()
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			panic("system error")
 		})
 
 		port, portStr := nextPort()
+		engine := builder.Build()
 		go engine.Listen(portStr)
 		waitForServer(port)
 
@@ -827,17 +826,16 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 			t.Error("Expected empty response body for unhandled error", string(bytes))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 	t.Run("Test we event error handling", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder := we.New()
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return events.New(http.StatusTeapot, "we event error")
 		})
 
 		port, portStr := nextPort()
+		engine := builder.Build()
 		go engine.Listen(portStr)
 		waitForServer(port)
 
@@ -854,17 +852,16 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 			t.Error("Expected content-type to not be present")
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 	t.Run("Test we event error handling with payload", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder := we.New()
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return events.NewPayload(http.StatusTeapot, "we event error", &events.Payload{ContentTypeHint: "text/plain", Content: []byte("something happened")})
 		})
 
 		port, portStr := nextPort()
+		engine := builder.Build()
 		go engine.Listen(portStr)
 		waitForServer(port)
 
@@ -881,18 +878,17 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 			t.Error("expected error message to be marshalled as text/plain")
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 	t.Run("Test application error after starting to write response", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder := we.New()
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			_, _ = w.Write([]byte("success"))
 			return fmt.Errorf("applicational error")
 		})
 
 		port, portStr := nextPort()
+		engine := builder.Build()
 		go engine.Listen(portStr)
 		waitForServer(port)
 
@@ -907,18 +903,17 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 			t.Error("Expected error occurring after response success already being sent", string(bytes))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 	t.Run("Test panic after starting to write response", func(t *testing.T) {
-		var shutdown func() error
-		engine := we.New()
-		engine.HookShutdownFunction(&shutdown)
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder := we.New()
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			_, _ = w.Write([]byte("success"))
 			panic("applicational error")
 		})
 
 		port, portStr := nextPort()
+		engine := builder.Build()
 		go engine.Listen(portStr)
 		waitForServer(port)
 
@@ -933,6 +928,6 @@ func TestWebEngineDefaultErrorHandling(t *testing.T) {
 			t.Error("Expected panic occurring after response already being sent ", string(bytes))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
