@@ -60,7 +60,7 @@ curl "http://localhost:8080/tags?tag=go&tag=web&tag=framework"
 Path variables are defined using curly braces `{name}`:
 
 ```go
-engine.Handle("/users/{id}", func(w http.ResponseWriter, scope we.RequestScope) error {
+builder.Handle("/users/{id}", func(w http.ResponseWriter, scope we.RequestScope) error {
     userId := scope.Var("id")  // Extract the variable
     // ...
     return nil
@@ -70,7 +70,7 @@ engine.Handle("/users/{id}", func(w http.ResponseWriter, scope we.RequestScope) 
 You can have multiple variables in one path:
 
 ```go
-engine.Handle("/users/{userId}/posts/{postId}", handler)
+builder.Handle("/users/{userId}/posts/{postId}", handler)
 ```
 
 ### Wildcards
@@ -108,8 +108,8 @@ When multiple routes could match a request, go-we uses this priority:
 **Example:**
 
 ```go
-engine.Handle("/special/admin", exactHandler)    // Exact
-engine.Handle("/special/{page}", variableHandler) // Variable
+builder.Handle("/special/admin", exactHandler)    // Exact
+builder.Handle("/special/{page}", variableHandler) // Variable
 
 // GET /special/admin -> exactHandler (exact match wins)
 // GET /special/settings -> variableHandler (variable matches)
@@ -120,7 +120,7 @@ engine.Handle("/special/{page}", variableHandler) // Variable
 ### Single Wildcard (`*`)
 
 ```go
-engine.Handle("/files/*", handler)
+builder.Handle("/files/*", handler)
 
 // Matches:     /files/document.pdf
 // Does NOT match:  /files
@@ -130,24 +130,12 @@ engine.Handle("/files/*", handler)
 ### Double Wildcard (`**`)
 
 ```go
-engine.Handle("/api/**", handler)
+builder.Handle("/api/**", handler)
 
 // Matches:     /api
 // Matches:     /api/users
 // Matches:     /api/v1/users
 // Matches:     /api/v1/users/123/posts
-```
-
-### Root Path Special Case
-
-As of v1.0, wildcards also match the root:
-
-```go
-engine.Handle("/**", catchAllHandler)
-
-// Now matches:     /
-// Matches:     /anything
-// Matches:     /any/path
 ```
 
 ## Next Steps
