@@ -30,7 +30,7 @@ The server will start on `http://localhost:8080`
 
 ## Key Concepts
 
-### Configuring Session Manager
+### Configuring the default Session Manager with default storage (in-memory):
 
 Use the builder pattern to configure the session manager:
 
@@ -163,7 +163,7 @@ CookieMaxAge(-1)     // Delete cookie immediately
 ### Login Pattern
 
 ```go
-engine.HandleMethod("POST", "/login", func(w http.ResponseWriter, scope we.RequestScope) error {
+builder.HandleMethod("POST", "/login", func(w http.ResponseWriter, scope we.RequestScope) error {
     // Validate credentials (simplified for example)
     username := scope.Request().FormValue("username")
     
@@ -179,7 +179,7 @@ engine.HandleMethod("POST", "/login", func(w http.ResponseWriter, scope we.Reque
 ### Protected Routes
 
 ```go
-engine.Handle("/profile", func(w http.ResponseWriter, scope we.RequestScope) error {
+builder.Handle("/profile", func(w http.ResponseWriter, scope we.RequestScope) error {
     username := scope.GetFromSession("username")
     if username == nil {
         // Not logged in - redirect to login
@@ -196,7 +196,7 @@ engine.Handle("/profile", func(w http.ResponseWriter, scope we.RequestScope) err
 ### Logout Pattern
 
 ```go
-engine.Handle("/logout", func(w http.ResponseWriter, scope we.RequestScope) error {
+builder.Handle("/logout", func(w http.ResponseWriter, scope we.RequestScope) error {
     // Remove authentication data
     scope.SetInSession("username", nil)
     scope.SetInSession("login_time", nil)
@@ -247,6 +247,19 @@ sessionManager := we.DefaultSessionManager().
 - Should not contain sensitive data
 
 Go-We uses cookies to store the **session ID only**. All session data stays on the server.
+
+## Session Storage
+
+By default, the default session manager uses in-memory storage, which is not suitable for multi-instance deployments
+nor production environments if restart/crash resilience is required. For production, implement the `SessionStorage` 
+interface to use some kind of persistent store.
+
+## Default Session Manager
+
+The default session manager provides a convenient way to get started with sessions. It uses in-memory storage by default
+and has sensible defaults for cookie configuration and session lifecycle.
+
+It can be configured with a custom production-ready storage implementation and is suitable for production environments.
 
 ## Next Steps
 
