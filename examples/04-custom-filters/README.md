@@ -78,6 +78,11 @@ curl -X OPTIONS \
 
 ### Filter Function Signature
 
+Filters have full access to the request but can only modify response headers. If they want
+to intercept the request and respond early, they can do so by returning a `WeEvent` error of the
+appropriate type (e.g. `UnauthorizedError`, `TooManyRequestsError`, etc.), including a 200 response
+WeEvent (which implements error and for all purposes is handled as an error).
+
 ```go
 func myFilter(headers http.Header, scope we.RequestScope) error {
     // Filters receive:
@@ -96,10 +101,10 @@ func myFilter(headers http.Header, scope we.RequestScope) error {
 
 ```go
 // Wrap function as filter
-engine.AddFilter(we.FilterFunction(myFilter))
+builder.Filter(we.FilterFunction(myFilter))
 
 // Or use built-in filters
-engine.AddFilter(filters.Cors().Build())
+builder.AddFilter(filters.Cors().Build())
 ```
 
 ### Filter Execution Order
@@ -107,15 +112,16 @@ engine.AddFilter(filters.Cors().Build())
 Filters execute in **registration order**:
 
 ```go
-engine.AddFilter(we.FilterFunction(firstFilter))   // Runs 1st
-engine.AddFilter(we.FilterFunction(secondFilter))  // Runs 2nd
-engine.AddFilter(we.FilterFunction(thirdFilter))   // Runs 3rd
-// Then handler executes
+builder.
+    Filter(we.FilterFunction(firstFilter)).  // Runs 1st 
+    Filter(we.FilterFunction(secondFilter)). // Runs 2nd
+    Filter(we.FilterFunction(thirdFilter))   // Runs 3rd
+// Then handler executes if filters do not return events that may break the chain
 ```
 
 **Important:** Order matters! For example:
 - CORS filter should run early to handle preflight requests
-- Authentication should run before authorization
+- Authentication should run before authorization (in-built security filter handles both in the correct order)
 - Logging often runs first or last depending on what you want to log
 
 ### Modifying Response Headers
@@ -211,9 +217,9 @@ corsFilter := filters.Cors().
     Build()
 ```
 
-### Security Headers Filter
+### Response Headers Filter
 
-Adds security-related HTTP headers:
+Supports configuring security-related HTTP headers as well as injecting any custom headers as needed:
 
 ```go
 securityFilter := filters.ResponseHeaders().
@@ -327,9 +333,10 @@ func contentTypeFilter(headers http.Header, scope we.RequestScope) error {
 
 **When to use a Filter:**
 - Cross-cutting concerns (logging, auth, CORS)
-- Logic that applies to multiple routes
-- Request/response modification
+- Logic that applies to multiple routes or globally
+- Request/response (headers) modification
 - Early validation/rejection
+- Exceptions to normal request lifecycle (e.g. short-circuiting)
 
 **When to use a Handler:**
 - Route-specific business logic
@@ -339,7 +346,8 @@ func contentTypeFilter(headers http.Header, scope we.RequestScope) error {
 
 ## Path-Based Filtering
 
-For filters that should only apply to specific paths, use the **security package** (see example 10-authorization):
+Filters are applied to all incoming requests. Filter implementations may support
+path specific configuration (e.g. CORS and ResponseHeaders filters).
 
 ```go
 import "github.com/gomatbase/go-we/security"
@@ -350,7 +358,8 @@ securityFilter := security.Filter(false). // Allow all by default
         Build()
 ```
 
-This example shows manual per-handler filtering for demonstration. In production, use the security package for path-based filter application.
+This example shows manual per-handler filtering for demonstration. In production, use the security package for 
+path-based security filter application.
 
 ## Best Practices
 
@@ -359,7 +368,7 @@ This example shows manual per-handler filtering for demonstration. In production
 3. **Fail fast** - Return early from filters when possible
 4. **Be efficient** - Filters run on every request
 5. **Use built-in filters** - CORS and security headers are production-ready
-6. **Don't mutate request** - Modify response headers, not the request itself
+6. **Don't mutate request** - Modify response headers, not the request. If you need to also process the request, make sure to reset body after reading so handlers may still process the request body.
 7. **Handle errors gracefully** - Return WeEvent errors for proper error responses
 
 ## Next Steps
