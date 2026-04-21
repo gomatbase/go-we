@@ -26,57 +26,9 @@ func (s *SimpleTokenIntrospector) Introspect(ctx context.Context, token string) 
 	return user, nil
 }
 
-func main() {
-	engine := we.New()
-
-	// Create token introspector with sample tokens
-	introspector := &SimpleTokenIntrospector{
-		validTokens: map[string]*security.User{
-			"admin-token-123": {
-				Username: "admin",
-				Scopes:   []string{"admin", "api:read", "api:write"},
-			},
-			"user-token-456": {
-				Username: "user",
-				Scopes:   []string{"api:read"},
-			},
-			"app-token-789": {
-				Username: "app-service",
-				Scopes:   []string{"api:read", "api:write"},
-			},
-		},
-	}
-
-	// Create Bearer authentication provider
-	authProvider := security.BearerAuthenticationProvider().
-		Introspector(introspector).
-		Build()
-
-	// Configure security filter
-	securityFilter := security.Filter(false).
-		// Public API endpoints
-		Path("/api/public/**").
-		Anonymous().
-		// Protected API - read operations
-		Path("/api/read/**").
-		Authentication(authProvider).
-		Authorize(security.Scope("api:read")).
-		// Protected API - write operations
-		Path("/api/write/**").
-		Authentication(authProvider).
-		Authorize(security.Scope("api:write")).
-		// Admin endpoints
-		Path("/api/admin/**").
-		Authentication(authProvider).
-		Authorize(security.Scope("admin")).
-		Build()
-
-	engine.AddFilter(securityFilter)
-
-	// Public home page
-	engine.Handle("/", func(w http.ResponseWriter, scope we.RequestScope) error {
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `
+func home(w http.ResponseWriter, scope we.RequestScope) error {
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, `
 			<h1>Bearer Token Authentication Example</h1>
 			
 			<h2>Test Tokens</h2>
@@ -133,50 +85,46 @@ curl -H "Authorization: Bearer user-token-456" \
      http://localhost:8080/api/write/data
 			</pre>
 		`)
-		return nil
-	})
+	return nil
+}
 
-	// Public API endpoint
-	engine.Handle("/api/public/info", func(w http.ResponseWriter, scope we.RequestScope) error {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"message": "Public API - no authentication required"}`)
-		return nil
-	})
+func info(w http.ResponseWriter, scope we.RequestScope) error {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, `{"message": "Public API - no authentication required"}`)
+	return nil
+}
 
-	// Read endpoint
-	engine.Handle("/api/read/data", func(w http.ResponseWriter, scope we.RequestScope) error {
-		user := scope.Get("user").(*security.User)
+func read(w http.ResponseWriter, scope we.RequestScope) error {
+	user := security.GetUser(scope)
 
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{
 	"message": "Read access granted",
 	"user": "%s",
 	"scopes": %q,
 	"data": ["item1", "item2", "item3"]
 }`, user.Username, user.Scopes)
-		return nil
-	})
+	return nil
+}
 
-	// Write endpoint
-	engine.Handle("/api/write/data", func(w http.ResponseWriter, scope we.RequestScope) error {
-		user := scope.Get("user").(*security.User)
+func write(w http.ResponseWriter, scope we.RequestScope) error {
+	user := security.GetUser(scope)
 
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{
 	"message": "Write access granted",
 	"user": "%s",
 	"scopes": %q,
 	"result": "Data written successfully"
 }`, user.Username, user.Scopes)
-		return nil
-	})
+	return nil
+}
 
-	// Admin endpoint
-	engine.Handle("/api/admin/users", func(w http.ResponseWriter, scope we.RequestScope) error {
-		user := scope.Get("user").(*security.User)
+func admin(w http.ResponseWriter, scope we.RequestScope) error {
+	user := security.GetUser(scope)
 
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{
 	"message": "Admin access granted",
 	"user": "%s",
 	"scopes": %q,
@@ -186,8 +134,50 @@ curl -H "Authorization: Bearer user-token-456" \
 		{"id": 3, "name": "app-service"}
 	]
 }`, user.Username, user.Scopes)
-		return nil
-	})
+	return nil
+}
+
+func main() {
+
+	// Create token introspector with sample tokens
+	introspector := &SimpleTokenIntrospector{
+		validTokens: map[string]*security.User{
+			"admin-token-123": {
+				Username: "admin",
+				Scopes:   []string{"admin", "api:read", "api:write"},
+			},
+			"user-token-456": {
+				Username: "user",
+				Scopes:   []string{"api:read"},
+			},
+			"app-token-789": {
+				Username: "app-service",
+				Scopes:   []string{"api:read", "api:write"},
+			},
+		},
+	}
+
+	// Create Bearer authentication provider
+	authProvider := security.BearerAuthenticationProvider().
+		Introspector(introspector).
+		Build()
+
+	// Configure security filter
+	securityFilter := security.Filter(false).
+		Authentication(authProvider).
+		Path("/api/read/**").Authorize(security.Scope("api:read")).   // Protected API - read operations
+		Path("/api/write/**").Authorize(security.Scope("api:write")). // Protected API - write operations
+		Path("/api/admin/**").Authorize(security.Scope("admin")).     // Admin endpoints
+		Build()
+
+	engine := we.New().
+		Filter(securityFilter).
+		Handle("/", home).                 // Public home page
+		Handle("/api/public/info", info).  // Public API endpoint
+		Handle("/api/read/data", read).    // Read endpoint
+		Handle("/api/write/data", write).  // Write endpoint
+		Handle("/api/admin/users", admin). // Admin endpoint
+		Build()
 
 	fmt.Println("Server starting on http://localhost:8080")
 	fmt.Println()
