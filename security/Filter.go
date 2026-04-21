@@ -305,38 +305,46 @@ type authorizationRules struct {
 // authorized by checking the authentication status and testing any authorization rules defined for the path.
 func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scope we.RequestScope) (*User, error) {
 	// at this stage, either there is already a user (authenticated at root level or taken from session), or
-	// there is no authenticated user.
+	// there is no authenticated user. Path authorization rules will exist with either specific authentication providers,
+	// authorization rules or both. If there are no authorization rules then the path can only be accessed by
+	// authenticated users. If there are authorization rules, then the path can also be accessed by anonymous users as
+	// long as they satisfy the authorization rules. If an authenticated user fails to pass the authorization rules,
+	// and there are path specific authentication providers, an attempt to authenticate the request with the path
+	// authentication providers will be done and then checked for authorization.
 
-	// if there's no user yet, we try to authenticate it if there are any authentication providers defined at the path
-	// level.
-	// TODO: review the path level authentication
-	if user == nil {
-		var e error
-		for _, provider := range ar.authenticationProviders {
-			user, e = provider.Authenticate(headers, scope)
-			if user != nil {
-				// a user is authenticated, we add the realm to it
-				user.Realm = provider.Realm()
-			}
-			if e != nil {
-				return user, e
-			} else {
-				break
-			}
-		}
-		// still no user is present, if there are also no authorization rules, we fail immediately
-		if user == nil && ar.authorization == nil {
-			return nil, events.UnauthorizedError
+	if user != nil {
+		// A user is authenticated, if there are no authorization rules, access is authorized.
+		// If path MUST be authenticated by one of the path authentication providers, then their realm requirement are part of
+		// the authorization rules.
+		if ar.authorization == nil || ar.authorization.IsAuthorized(user, scope) {
+			return user, nil
 		}
 	}
 
-	// A user was authenticated, if there are authorization rules...
-	if ar.authorization == nil || ar.authorization.IsAuthorized(user, scope) {
-		return user, nil
+	// If it reached this point, either there is no authenticated user, or the authenticated user doesn't satisfy the
+	// authorization rules. We try to authenticate the user with the path specific authentication providers, if any.
+	var pathAuthenticatedUser *User
+	var e error
+	for _, provider := range ar.authenticationProviders {
+		pathAuthenticatedUser, e = provider.Authenticate(headers, scope)
+		if e == nil && pathAuthenticatedUser != nil {
+			// a user is authenticated, if not we continue trying providers.
+			break
+		}
 	}
 
+	if pathAuthenticatedUser == nil && ar.authorization == nil {
+		// no authorization rules, access simply needs to be authenticated and failed at that.
+		return user, events.UnauthorizedError
+	}
+
+	// Either a user is authenticated or authorization rules still need to be checked.
+	if ar.authorization == nil || ar.authorization.IsAuthorized(pathAuthenticatedUser, scope) {
+		return pathAuthenticatedUser, nil
+	}
+
+	// user might be authenticated but not authorized, access is forbidden
 	return user, events.ForbiddenError
-
 }
 
 // sendChallenge is a help function to add authentication challenges to the response headers
@@ -388,7 +396,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 	}
 
 	if user == nil {
-		// No user found
+		// No valid user found
 		// let's check if there is any authentication provider registered for the requested path
 		if authorization, _ := f.registeredEndpoints.Get(scope.Request().URL.Path); authorization != nil {
 			var e error
@@ -437,6 +445,9 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		if authorization, _ := f.authorizations.Get(scope.Request().URL.Path); authorization != nil {
 			var e error
 			if user, e = (*authorization).IsAuthorized(header, user, scope); e != nil {
+				// the error may be one of authorization or authentication, if authentication is also configured at the path level.
+				// if it's an authentication error we send authentication challenges. Authorization errors (forbidden) are
+				// simply returned (they don't trigger basic authentication on the browser, for example).
 				if events.UnauthorizedError.Is(e) {
 					sendChallenges(header, authorization.challenges)
 					sendChallenges(header, f.challenges)
@@ -449,7 +460,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 	}
 
 	if user != nil {
-		// an authentication was made as Anonymous, user should not be added to scope but an access is authorized.
+		// if an authentication was made as Anonymous, user should not be added to scope but access is authorized.
 		if user != Anonymous {
 			scope.Set(UserAttributeName, user)
 			if sessionUser != user {
