@@ -11,41 +11,9 @@ import (
 	"github.com/gomatbase/go-we/security"
 )
 
-func main() {
-	engine := we.New()
-
-	// Configure Basic Authentication
-	// Create users with credentials
-	users := []security.User{
-		{Username: "admin", Password: "admin123", Scopes: []string{"admin", "user"}},
-		{Username: "user", Password: "user123", Scopes: []string{"user"}},
-		{Username: "guest", Password: "guest123", Scopes: []string{}},
-	}
-
-	// Create security filter with Basic Authentication
-	authProvider := security.BasicAuthenticationProvider(users...).Build()
-
-	securityFilter := security.Filter(false). // Allow anonymous access by default
-		// Protect admin paths - requires admin scope
-		Path("/admin/**").
-		Authentication(authProvider).
-		Authorize(security.Scope("admin")).
-		// Protect user paths - requires user scope
-		Path("/user/**").
-		Authentication(authProvider).
-		Authorize(security.Scope("user")).
-		// Protect API paths - requires authentication (any user)
-		Path("/api/**").
-		Authentication(authProvider).
-		Authorize().
-		Build()
-
-	engine.AddFilter(securityFilter)
-
-	// Public home page
-	engine.Handle("/", func(w http.ResponseWriter, scope we.RequestScope) error {
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `
+func home(w http.ResponseWriter, scope we.RequestScope) error {
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, `
 			<h1>Basic Authentication Example</h1>
 			
 			<h2>Test Credentials</h2>
@@ -98,51 +66,78 @@ curl -u user:user123 http://localhost:8080/user/dashboard
 curl -u guest:guest123 http://localhost:8080/api/data
 			</pre>
 		`)
-		return nil
-	})
+	return nil
+}
 
-	// User dashboard - requires "user" scope
-	engine.Handle("/user/dashboard", func(w http.ResponseWriter, scope we.RequestScope) error {
-		// Get authenticated user from scope
-		user := scope.Get("user").(*security.User)
+func dashboard(w http.ResponseWriter, scope we.RequestScope) error {
+	// Get authenticated user from scope
+	user := security.GetUser(scope)
 
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `
 			<h1>User Dashboard</h1>
 			<p>Welcome, <strong>%s</strong>!</p>
 			<p>Your scopes: <code>%v</code></p>
 			<p><a href="/">Back to home</a></p>
 		`, user.Username, user.Scopes)
-		return nil
-	})
+	return nil
+}
 
-	// Admin panel - requires "admin" scope
-	engine.Handle("/admin/panel", func(w http.ResponseWriter, scope we.RequestScope) error {
-		user := scope.Get("user").(*security.User)
+func panel(w http.ResponseWriter, scope we.RequestScope) error {
+	user := security.GetUser(scope)
 
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprintf(w, `
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `
 			<h1>Admin Panel</h1>
 			<p>Welcome, Administrator <strong>%s</strong>!</p>
 			<p>Your scopes: <code>%v</code></p>
 			<p>This page is only accessible to users with the 'admin' scope.</p>
 			<p><a href="/">Back to home</a></p>
 		`, user.Username, user.Scopes)
-		return nil
-	})
+	return nil
+}
 
-	// API endpoint - requires authentication but no specific scope
-	engine.Handle("/api/data", func(w http.ResponseWriter, scope we.RequestScope) error {
-		user := scope.Get("user").(*security.User)
+func data(w http.ResponseWriter, scope we.RequestScope) error {
+	user := security.GetUser(scope)
 
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{
 	"message": "API access granted",
 	"user": "%s",
 	"scopes": %q
 }`, user.Username, user.Scopes)
-		return nil
-	})
+	return nil
+}
+
+func main() {
+
+	// Configure Basic Authentication
+	// Create users with credentials
+	users := []security.User{
+		{Username: "admin", Password: "admin123", Scopes: []string{"admin", "user"}},
+		{Username: "user", Password: "user123", Scopes: []string{"user"}},
+		{Username: "guest", Password: "guest123", Scopes: []string{}},
+	}
+
+	// Create security filter with Basic Authentication
+	authProvider := security.BasicAuthenticationProvider(users...).Build()
+
+	securityFilter := security.Filter(false). // Allow anonymous access by default
+		// Protect admin paths - requires admin scope
+		Path("/admin/**").Authentication(authProvider).Authorize(security.Scope("admin")).
+		// Protect user paths - requires user scope
+		Path("/user/**").Authentication(authProvider).Authorize(security.Scope("user")).
+		// Protect API paths - requires authentication (any user)
+		Path("/api/**").Authentication(authProvider).Authorize().
+		Build()
+
+	engine := we.New().
+		Filter(securityFilter).
+		Handle("/", home).                    // Public home page
+		Handle("/user/dashboard", dashboard). // User dashboard - requires "user" scope
+		Handle("/admin/panel", panel).        // Admin panel - requires "admin" scope
+		Handle("/api/data", data).            // API endpoint - requires authentication but no specific scope
+		Build()
 
 	fmt.Println("Server starting on http://localhost:8080")
 	fmt.Println()
