@@ -204,22 +204,22 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 			// it is... let's first quickly check if it's small enough to be a submission form, and if not, let's simply unauthorize it
 			if request.ContentLength > MaxLoginFormSize {
 				// such a submission would come out of another source and not from the provider, so... drop the target
-				return nil, events.BadRequestError.WithPayload("application/html", []byte(lfap.loginForm.Generate("Invalid login submission", "")))
+				return nil, events.BadRequestError.WithPayload("text/html", []byte(lfap.loginForm.Generate("Invalid login submission", "")))
 			}
 			if e := request.ParseForm(); e != nil {
 				// target would have come from the form, and parsing the form failed, so... drop the target
-				return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate(e.Error(), "")))
+				return nil, events.UnauthorizedError.WithPayload("text/html", []byte(lfap.loginForm.Generate(e.Error(), "")))
 			}
 			username := request.PostForm.Get(lfap.loginFormConfiguration.UsernameField)
 			password := request.PostForm.Get(lfap.loginFormConfiguration.PasswordField)
 
 			md5Sum := md5.Sum([]byte(password))
 			if user, e := lfap.credentialsProvider.Authenticate(scope.Context(), username, base64.StdEncoding.EncodeToString(md5Sum[:])); e != nil {
-				return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate(e.Error(), request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
+				return nil, events.UnauthorizedError.WithPayload("text/html", []byte(lfap.loginForm.Generate(e.Error(), request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
 			} else if user == nil {
-				return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate("Invalid credentials", request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
+				return nil, events.UnauthorizedError.WithPayload("text/html", []byte(lfap.loginForm.Generate("Invalid credentials", request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
 			} else {
-				return user, nil
+				return user, events.FoundRedirect.WithAttribute(request.PostForm.Get(lfap.loginFormConfiguration.TargetField))
 			}
 		} else if request.Method == http.MethodGet {
 			// It's a get, supply the login form
@@ -227,7 +227,7 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 			if len(target) == 0 {
 				target = lfap.defaultRedirectPath
 			}
-			return nil, events.OKInterruption.WithPayload("application/html", []byte(lfap.loginForm.Generate("", target)))
+			return nil, events.OKInterruption.WithPayload("text/html", []byte(lfap.loginForm.Generate("", target)))
 		}
 	}
 
@@ -237,14 +237,15 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 		if lfap.redirect {
 			// client should be redirected to the login form
 
+			var loginPath string
 			if request.Method != http.MethodGet {
 				// Makes no sense to make a final redirect for any method other than GET
-				headers.Add("Location", fmt.Sprintf("%s://%s%s", request.URL.Scheme, request.URL.Host, lfap.loginPath))
+				loginPath = lfap.loginPath
 			} else {
-				headers.Add("Location", fmt.Sprintf("%s://%s%s?%s=%s", request.URL.Scheme, request.URL.Host, lfap.loginPath, lfap.loginFormConfiguration.TargetField, url.PathEscape(request.URL.Path)))
+				loginPath = fmt.Sprintf("%s?%s=%s", lfap.loginPath, lfap.loginFormConfiguration.TargetField, url.PathEscape(request.URL.Path))
 			}
 
-			return nil, events.FoundRedirect
+			return nil, events.FoundRedirect.WithAttribute(loginPath)
 		}
 
 		// no redirect, let's return the login form
@@ -252,7 +253,7 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 		if request.Method != http.MethodGet {
 			target = lfap.defaultRedirectPath
 		}
-		return nil, events.UnauthorizedError.WithPayload("application/html", []byte(lfap.loginForm.Generate("", target)))
+		return nil, events.UnauthorizedError.WithPayload("text/html", []byte(lfap.loginForm.Generate("", target)))
 	}
 
 	// authentication is not required, no user and no error

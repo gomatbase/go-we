@@ -11,17 +11,19 @@ import (
 )
 
 // AuthenticationProvider is an interface for authentication provider implementations. Authentication providers can
-// be addedto a security filter to provider users that will be added to the request scope.
+// be added to a security filter to provider users that will be added to the request scope.
 type AuthenticationProvider interface {
 	// Authenticate Tries to authenticate the incoming request. Each provider should extract from the incoming request
 	// the information required to authenticate it. If none of the required attributes are present in the request, then the
 	// provider should return a nil user and no error. If the request does have authentication credentials, and they
 	// cannot be validated, then it should return an error. Successful authentication returns a user object and no error.
-	// When calling external resources (databases, APIs, etc.), use scope.Context() to respect request cancellation and timeouts.
+	// Implementations calling external resources (databases, APIs, etc.), should use scope.Context() to respect
+	// request cancellation and timeouts. Implementations MUST return a user with the correct Realm. While that is not
+	// checked (one less check), not doing so will cause issues with user validation and authenticated session management.
 	Authenticate(headers http.Header, scope we.RequestScope) (*User, error)
 	// Realm returns the provider authentication realm. Each provider should authenticate users for a distinct realm
 	// within the same application. This realm is used to identify the authentication provider when checking if the user
-	// is still value
+	// is still valid
 	Realm() string
 	// IsValid checks if the provided user is still authenticated
 	IsValid(user *User) bool
@@ -30,7 +32,7 @@ type AuthenticationProvider interface {
 	// WWW-Authenticate response headers
 	Challenge() string
 	// Endpoints are specific endpoints the authorization provider reports as being handled by the filter also, regardless
-	// if they fall under any specific path they are authenticating. Typically they will only report endpoints used
+	// if they fall under any specific path they are authenticating. Typically, they will only report endpoints used
 	// in SSO or login form authenticators
 	Endpoints() []string
 }

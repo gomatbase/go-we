@@ -106,7 +106,7 @@ func (fb *filterBuilder) Build() we.Filter {
 
 	result := &filter{
 		globalProviders:         make(map[string]AuthenticationProvider),
-		registeredEndpoints:     pathTree.New[authorizationRules](),
+		registeredEndpoints:     pathTree.New[AuthenticationProvider](),
 		authenticationProviders: fb.authenticationProviders,
 		restricted:              fb.restricted,
 	}
@@ -131,9 +131,7 @@ func (fb *filterBuilder) Build() we.Filter {
 			// provider allows usage of custom endpoints, the authentication provider must configure and report which
 			// endpoints should be handled by it.
 			for _, endpoint := range provider.Endpoints() {
-				if e := result.registeredEndpoints.Add(endpoint, authorizationRules{
-					authenticationProviders: []AuthenticationProvider{provider},
-				}); e != nil {
+				if e := result.registeredEndpoints.Add(endpoint, provider); e != nil {
 					panic("Provider owned endpoint " + endpoint + " already registered")
 				}
 			}
@@ -179,7 +177,7 @@ func (fb *filterBuilder) Build() we.Filter {
 					result.globalProviders[provider.Realm()] = provider
 					// any endpoint handled by path specific authentication providers may also not conflict with any other registered path
 					for _, endpoint := range provider.Endpoints() {
-						if e := result.registeredEndpoints.Add(endpoint, authorization); e != nil {
+						if e := result.registeredEndpoints.Add(endpoint, provider); e != nil {
 							panic("Provider owned endpoint already registered")
 						}
 					}
@@ -327,9 +325,12 @@ func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scop
 	var e error
 	for _, provider := range ar.authenticationProviders {
 		pathAuthenticatedUser, e = provider.Authenticate(headers, scope)
-		if e == nil && pathAuthenticatedUser != nil {
-			// a user is authenticated, if not we continue trying providers.
+		if pathAuthenticatedUser != nil {
+			// a user is authenticated, proceed to authorization check.
 			break
+		} else if e != nil {
+			// authentication resulted in an error, it means that an authentication was attempted and failed
+			return nil, e
 		}
 	}
 
@@ -365,7 +366,7 @@ type filter struct {
 	authenticationTriggers []func(*User, we.RequestScope)
 	// list of exclusion endpoints that should be ignored for authorization checks as they will be directly handled by
 	// authorization providers
-	registeredEndpoints pathTree.Tree[authorizationRules]
+	registeredEndpoints pathTree.Tree[AuthenticationProvider]
 	// path tree containing all paths with specific authorization rules and the corresponding authorization rules that
 	// need to be validated
 	authorizations pathTree.Tree[authorizationRules]
@@ -383,11 +384,11 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 	var user, sessionUser *User
 
 	// let's first check if there might be a user in session and if it's valid
-	if storedUser := scope.GetFromSession(UserAttributeName); storedUser != nil {
-		isUser := false
+	var isUser bool
+	if sessionUser, isUser = scope.GetFromSession(UserAttributeName).(*User); isUser {
 		// User/Programmer may actually overwrite the user in session with some other object. If it's not a user
 		// object stored in the expected key, then we consider it invalid (unauthenticated) and remove it from the session.
-		if sessionUser, isUser = storedUser.(*User); isUser && f.globalProviders[sessionUser.Realm].IsValid(sessionUser) {
+		if f.globalProviders[sessionUser.Realm] != nil && f.globalProviders[sessionUser.Realm].IsValid(sessionUser) {
 			user = sessionUser
 		} else {
 			// the user in session is not valid anymore, let's remove it
@@ -395,47 +396,45 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		}
 	}
 
-	if user == nil {
-		// No valid user found
-		// let's check if there is any authentication provider registered for the requested path
-		if authorization, _ := f.registeredEndpoints.Get(scope.Request().URL.Path); authorization != nil {
-			var e error
-			// If there are authorization rules for the path, we simply check if access is authorized. Either access
-			// needs to be authenticated or anonymous access is allowed.
-			user, e = (*authorization).IsAuthorized(header, user, scope)
-			if user != nil {
-				// Successful authorization will always return a user, either a real one or the special anonymous user.
-				for _, trigger := range f.authenticationTriggers {
-					// trigger any configured authentication trigger functions
-					execute(trigger, user, scope)
-				}
-				// set the user in session, which, in case WE has no sessions turned on, will be lost at the end of the request.
-				scope.SetInSession(UserAttributeName, user)
+	// check if the requested path has been registered to be handled by an authentication provider.
+	if provider, _ := f.registeredEndpoints.Get(scope.Request().URL.Path); provider != nil {
+		var e error
+		// If anything is registered, we'll try to have it handle the request.
+		user, e = (*provider).Authenticate(header, scope)
+		if user != nil {
+			// user is authenticated, ensure realm is associated to the authenticating provider.
+			user.Realm = (*provider).Realm()
+			// Successful authorization will always return a user, either a real one or the special anonymous user.
+			for _, trigger := range f.authenticationTriggers {
+				// trigger any configured authentication trigger functions
+				execute(trigger, user, scope)
 			}
-
-			// If either access to the path requires an authenticated user, or an authentication attempt was made
-			// with invalid credentials, isAuthorized() will return an error. If it doesn't return an error it's because
-			// authentication at root-level may still be attempted.
-			if e != nil {
-				// The user simply is not authorized.
-				if events.UnauthorizedError.Is(e) {
-					sendChallenges(header, f.challenges)
-				}
-				// Any other error is considered a failed authentication attempt
-				return e
-			}
+			// set the user in session, which, in case WE has no sessions turned on, will be lost at the end of the request.
+			scope.SetInSession(UserAttributeName, user)
 		}
 
-		// let's check if the request can be authenticated at root level, in case there's still no user
-		if user == nil {
-			for _, provider := range f.authenticationProviders {
-				if authenticatedUser, e := provider.Authenticate(header, scope); e != nil {
-					return e
-				} else if authenticatedUser != nil {
-					authenticatedUser.Realm = provider.Realm()
-					user = authenticatedUser
-					break
-				}
+		// If either access to the path requires an authenticated user, or an authentication attempt was made
+		// with invalid credentials, isAuthorized() will return an error. If it doesn't return an error it's because
+		// authentication at root-level may still be attempted.
+		if e != nil {
+			// The user simply is not authorized.
+			if events.UnauthorizedError.Is(e) {
+				sendChallenges(header, f.challenges)
+			}
+			// Any other error is considered a failed authentication attempt
+			return e
+		}
+	}
+
+	// let's check if the request can be authenticated at root level, in case there's still no user
+	if user == nil {
+		for _, provider := range f.authenticationProviders {
+			if authenticatedUser, e := provider.Authenticate(header, scope); e != nil {
+				return e
+			} else if authenticatedUser != nil {
+				authenticatedUser.Realm = provider.Realm()
+				user = authenticatedUser
+				break
 			}
 		}
 	}
