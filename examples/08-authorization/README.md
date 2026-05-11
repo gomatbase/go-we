@@ -51,7 +51,7 @@ curl -u admin:admin123 http://localhost:8080/admin/users
 ### Scope-Based Authorization
 
 ```go
-.Path("/admin/**").
+builder.Path("/admin/**").
     Authentication(authProvider).
     Authorize(security.Scope("admin"))
 ```
@@ -60,7 +60,7 @@ curl -u admin:admin123 http://localhost:8080/admin/users
 
 **Require ALL scopes:**
 ```go
-.Authorize(security.All(
+builder.Authorize(security.All(
     security.Scope("admin"),
     security.Scope("premium"),
 ))
@@ -68,7 +68,7 @@ curl -u admin:admin123 http://localhost:8080/admin/users
 
 **Require ANY scope:**
 ```go
-.Authorize(security.Either(
+builder.Authorize(security.Either(
     security.Scope("editor"),
     security.Scope("admin"),
 ))
@@ -81,7 +81,7 @@ customAuth := security.AuthorizationFunc(func(u *security.User, s we.RequestScop
     return u.Username == "superadmin"
 })
 
-.Authorize(customAuth)
+builder.Authorize(customAuth)
 ```
 
 ## Authorization Types
@@ -96,5 +96,5 @@ customAuth := security.AuthorizationFunc(func(u *security.User, s we.RequestScop
 
 ## Next Steps
 
-- [11-error-handling](../11-error-handling/) - Error handling patterns
+- [09-error-handling](../09-error-handling/) - Error handling patterns
 - [BEST_PRACTICES](../../docs/BEST_PRACTICES.md) - Security best practices
