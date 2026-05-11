@@ -1,6 +1,6 @@
 # Error Handling Example
 
-Demonstrates error handling with WeEvent errors and custom error responses.
+Demonstrates error handling with WeEvent errors and custom error responses using the default error handler.
 
 ## Running
 
@@ -92,5 +92,5 @@ func handler(w http.ResponseWriter, scope we.RequestScope) error {
 
 ## Next Steps
 
-- [12-rest-api](../12-rest-api/) - REST API with JSON
+- [10-rest-api](../10-rest-api/) - REST API with JSON
 - [BEST_PRACTICES](../../docs/BEST_PRACTICES.md) - Error handling patterns
