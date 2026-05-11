@@ -344,6 +344,11 @@ func (ar *authorizationRules) IsAuthorized(headers http.Header, user *User, scop
 		return pathAuthenticatedUser, nil
 	}
 
+	if user == nil {
+		// no user is authenticated, raise an unauthorized to trigger authentication challenges.
+		return nil, events.UnauthorizedError
+	}
+
 	// user might be authenticated but not authorized, access is forbidden
 	return user, events.ForbiddenError
 }

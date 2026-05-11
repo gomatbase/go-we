@@ -271,10 +271,12 @@ func (lfap *loginFormAuthenticationProvider) IsValid(user *User) bool {
 	return lfap.credentialsProvider.Get(user.Username) != nil
 }
 
+// Challenge returns nothing. Form based authentication does not use WWW-Authenticate headers.
 func (lfap *loginFormAuthenticationProvider) Challenge() string {
 	return ""
 }
 
+// Endpoints returns the login path that is directly handled by the provider when processing an authentication submission.
 func (lfap *loginFormAuthenticationProvider) Endpoints() []string {
 	return []string{lfap.loginPath}
 }
