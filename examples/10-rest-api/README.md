@@ -54,16 +54,13 @@ curl -X DELETE http://localhost:8080/api/users/3
 ### JSON Request Parsing
 
 ```go
-body, _ := io.ReadAll(scope.Request().Body)
-var user User
-json.Unmarshal(body, &user)
+user, err := util.ReadJsonBody[User](scope)
 ```
 
 ### JSON Response
 
 ```go
-w.Header().Set("Content-Type", "application/json")
-json.NewEncoder(w).Encode(user)
+return util.ReplyJson(w, http.StatusOK, user)
 ```
 
 ### HTTP Status Codes
@@ -92,5 +89,5 @@ if newUser.Name == "" {
 
 ## Next Steps
 
-- [13-static-files](../13-static-files/) - Serving static files
-- [14-full-application](../14-full-application/) - Complete application
+- [11-static-files](../11-static-files/) - Serving static files
+- [12-full-application](../12-full-application/) - Complete application
