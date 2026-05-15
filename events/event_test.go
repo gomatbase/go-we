@@ -117,7 +117,7 @@ func TestWeEvent_Attribute(t *testing.T) {
 func TestWeEvent_Category(t *testing.T) {
 	tests := []struct {
 		statusCode int
-		category   int
+		category   EventFlowCategory
 	}{
 		{100, 1}, // Informational
 		{200, 2}, // Success

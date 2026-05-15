@@ -90,3 +90,22 @@ var (
 	// InternalServerError non-specific server side error. Any uncaught panic will result in a 500 error
 	InternalServerError = &weEvent{statusCode: http.StatusInternalServerError, category: 5, message: "Internal Server Error"}
 )
+
+func HandleFlowEvent(w http.ResponseWriter, e error) (bool, EventFlowCategory, WeEvent) {
+	if event, isType := e.(WeEvent); isType {
+		category := event.Category()
+		switch category {
+		case Interruption:
+			w.Header().Set("Content-type", event.Payload().ContentTypeHint)
+			w.WriteHeader(event.StatusCode())
+			w.Write(event.Payload().Content)
+		case Redirection:
+			w.Header().Set("Location", event.Attribute())
+			w.WriteHeader(event.StatusCode())
+		default:
+			return false, category, event
+		}
+		return true, category, event
+	}
+	return false, Unknown, nil
+}

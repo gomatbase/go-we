@@ -364,27 +364,21 @@ func (wc *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var e error
 loop:
 	for _, filter := range wc.filters {
-		// ignore the error for now
 		e = filter.Filter(rw.Header(), scope)
 		if e != nil {
-			if event, isEvent := e.(events.WeEvent); isEvent {
-				switch event.Category() {
-				case events.RequestFlow:
+			// The error handler may be a custom one overriding the normal behaviour of flow events.
+			// Only use the error handler if the default flow event handling doesn't apply to the raised event/error.
+			handled, category, event := events.HandleFlowEvent(w, e)
+			if !handled {
+				if category == events.RequestFlow {
+					// Filter raised a special flow event. Endpoint is updated and either skips the rest of the filters
+					// or continues with the rest of the filters after updating the request endpoint.
 					scope.updateEndpoint(event.Attribute())
 					if events.Continue.Is(event) {
 						break loop
 					}
-				case events.Interruption:
-					w.Header().Set("Content-type", event.Payload().ContentTypeHint)
-					w.WriteHeader(event.StatusCode())
-					w.Write(event.Payload().Content)
-				case events.Redirection:
-					w.Header().Set("Location", event.Attribute())
-					w.WriteHeader(event.StatusCode())
-				default:
-					wc.errorHandler.HandleError(rw, event, scope)
+					continue
 				}
-			} else {
 				wc.errorHandler.HandleError(rw, e, scope)
 			}
 			return

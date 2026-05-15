@@ -41,18 +41,17 @@ func TestDefaultErrorMarshaller(t *testing.T) {
 		err := events.NewPayload(400, "Bad Request", payload)
 
 		// Create engine with default error handling
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return err
 		})
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
 
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 400 {
 			t.Errorf("Expected status 400, got %d", w.Code)
@@ -64,24 +63,23 @@ func TestDefaultErrorMarshaller(t *testing.T) {
 			t.Errorf("Expected Content-Type text/plain, got %s", w.Header().Get("Content-Type"))
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 
 	t.Run("WeEvent without payload returns empty body", func(t *testing.T) {
 		err := events.New(404, "Not Found")
 
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return err
 		})
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
 
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 404 {
 			t.Errorf("Expected status 404, got %d", w.Code)
@@ -90,24 +88,23 @@ func TestDefaultErrorMarshaller(t *testing.T) {
 			t.Errorf("Expected empty body, got %s", w.Body.String())
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 
 	t.Run("Regular error returns 500 with empty body", func(t *testing.T) {
 		err := errors.New("regular error")
 
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return err
 		})
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
 
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 500 {
 			t.Errorf("Expected status 500, got %d", w.Code)
@@ -116,17 +113,15 @@ func TestDefaultErrorMarshaller(t *testing.T) {
 			t.Errorf("Expected empty body, got %s", w.Body.String())
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestErrorHandlerAfterWriteStarted(t *testing.T) {
 	t.Run("Error after response started is logged but not sent", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			// Start writing response
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("partial response"))
@@ -138,7 +133,8 @@ func TestErrorHandlerAfterWriteStarted(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
 
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		// Should still have 200 status since write already started
 		if w.Code != 200 {
@@ -148,40 +144,39 @@ func TestErrorHandlerAfterWriteStarted(t *testing.T) {
 			t.Errorf("Expected 'partial response', got %s", w.Body.String())
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestErrorHandlerIntegration(t *testing.T) {
 	t.Run("Different error types handled correctly", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
 		// Handler that returns different error types based on path
-		engine.Handle("/badrequest", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/badrequest", func(w http.ResponseWriter, r we.RequestScope) error {
 			return events.NewPayload(400, "Bad Request", &events.Payload{
 				ContentTypeHint: "application/json",
 				Content:         []byte(`{"error":"invalid input"}`),
 			})
 		})
 
-		engine.Handle("/unauthorized", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/unauthorized", func(w http.ResponseWriter, r we.RequestScope) error {
 			return events.New(401, "Unauthorized")
 		})
 
-		engine.Handle("/servererror", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/servererror", func(w http.ResponseWriter, r we.RequestScope) error {
 			return errors.New("internal error")
 		})
 
-		engine.Handle("/panic", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/panic", func(w http.ResponseWriter, r we.RequestScope) error {
 			panic("something went wrong")
 		})
 
 		// Test 400 with payload
 		req := httptest.NewRequest(http.MethodGet, "/badrequest", nil)
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 400 {
 			t.Errorf("Expected status 400, got %d", w.Code)
@@ -193,7 +188,7 @@ func TestErrorHandlerIntegration(t *testing.T) {
 		// Test 401 without payload
 		req = httptest.NewRequest(http.MethodGet, "/unauthorized", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 401 {
 			t.Errorf("Expected status 401, got %d", w.Code)
@@ -205,7 +200,7 @@ func TestErrorHandlerIntegration(t *testing.T) {
 		// Test regular error
 		req = httptest.NewRequest(http.MethodGet, "/servererror", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 500 {
 			t.Errorf("Expected status 500, got %d", w.Code)
@@ -214,24 +209,22 @@ func TestErrorHandlerIntegration(t *testing.T) {
 		// Test panic recovery
 		req = httptest.NewRequest(http.MethodGet, "/panic", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 500 {
 			t.Errorf("Expected status 500 for panic, got %d", w.Code)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestErrorHandlerWithFilters(t *testing.T) {
 	t.Run("Filter errors are handled correctly", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
 		// Filter that returns an error
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			if r.Parameter("fail") == "true" {
 				return events.NewPayload(403, "Forbidden", &events.Payload{
 					ContentTypeHint: "text/plain",
@@ -241,7 +234,7 @@ func TestErrorHandlerWithFilters(t *testing.T) {
 			return nil
 		}))
 
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			_, _ = w.Write([]byte("success"))
 			return nil
 		})
@@ -249,7 +242,8 @@ func TestErrorHandlerWithFilters(t *testing.T) {
 		// Request that passes filter
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("Expected status 200, got %d", w.Code)
@@ -261,7 +255,7 @@ func TestErrorHandlerWithFilters(t *testing.T) {
 		// Request that fails filter
 		req = httptest.NewRequest(http.MethodGet, "/?fail=true", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 403 {
 			t.Errorf("Expected status 403, got %d", w.Code)
@@ -270,18 +264,16 @@ func TestErrorHandlerWithFilters(t *testing.T) {
 			t.Errorf("Expected 'Access denied', got %s", w.Body.String())
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestErrorHandlerEdgeCases(t *testing.T) {
 	t.Run("Multiple errors in sequence", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
 		errorCount := 0
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			errorCount++
 			if errorCount%2 == 0 {
 				return events.New(404, "Not Found")
@@ -292,7 +284,8 @@ func TestErrorHandlerEdgeCases(t *testing.T) {
 		// First request - should get 500
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 		if w.Code != 500 {
 			t.Errorf("First request: expected 500, got %d", w.Code)
 		}
@@ -300,31 +293,30 @@ func TestErrorHandlerEdgeCases(t *testing.T) {
 		// Second request - should get 404
 		req = httptest.NewRequest(http.MethodGet, "/", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 		if w.Code != 404 {
 			t.Errorf("Second request: expected 404, got %d", w.Code)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 
 	t.Run("Error with attributes", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			return events.New(400, "Validation Error").WithAttribute("field:username")
 		})
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 400 {
 			t.Errorf("Expected status 400, got %d", w.Code)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }

@@ -8,11 +8,14 @@ import (
 	"fmt"
 )
 
+type EventFlowCategory int
+
 // Event Categories for flow control events
 const (
-	RequestFlow  = 1
-	Interruption = 2
-	Redirection  = 3
+	Unknown EventFlowCategory = iota
+	RequestFlow
+	Interruption
+	Redirection
 )
 
 // WeEvent is the interface for events that are meant to be used both as error as well as a flow control event.
@@ -30,7 +33,7 @@ type WeEvent interface {
 	// Attribute returns the attribute carried by the event. Attributes have data that may be used when processing the error/event
 	Attribute() string
 	// Category returns the range in which http status code of the event falls into (basically , the first digit of the three digit http status code)
-	Category() int
+	Category() EventFlowCategory
 	// WithPayload returns a new identical error with a payload of the given content type and content
 	WithPayload(string, []byte) WeEvent
 	// WithAttribute returns a new identical event with the given attribute
@@ -48,7 +51,7 @@ func New(statusCode int, message string) WeEvent {
 // NewPayload creates a new we error with the given status code, message and payload
 func NewPayload(statusCode int, message string, payload *Payload) WeEvent {
 	return &weEvent{
-		category:   statusCode / 100,
+		category:   EventFlowCategory(statusCode / 100),
 		statusCode: statusCode,
 		message:    message,
 		payload:    payload,
@@ -58,7 +61,7 @@ func NewPayload(statusCode int, message string, payload *Payload) WeEvent {
 // weEvent is a WeEvent implementation
 type weEvent struct {
 	statusCode int
-	category   int
+	category   EventFlowCategory
 	message    string
 	payload    *Payload
 	attribute  string
@@ -86,7 +89,7 @@ func (wee *weEvent) Attribute() string {
 	return wee.attribute
 }
 
-func (wee *weEvent) Category() int {
+func (wee *weEvent) Category() EventFlowCategory {
 	return wee.category
 }
 
