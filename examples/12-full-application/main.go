@@ -4,9 +4,7 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"time"
@@ -15,21 +13,36 @@ import (
 	"github.com/gomatbase/go-we/events"
 	"github.com/gomatbase/go-we/filters"
 	"github.com/gomatbase/go-we/security"
+	"github.com/gomatbase/go-we/util"
 )
 
 // Data models
+
 type Task struct {
 	ID          int       `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Completed   bool      `json:"completed"`
+	Title       *string   `json:"title"`
+	Description *string   `json:"description"`
+	Completed   *bool     `json:"completed"`
 	CreatedBy   string    `json:"created_by"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type Health struct {
+	Status    string `json:"status"`
+	Timestamp string `json:"timestamp"`
+}
+
+func NewHealth() *Health {
+	return &Health{
+		Status:    "healthy",
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+}
+
 // In-memory data store
-var tasks = make(map[int]Task)
+var tasks = make(map[int]*Task)
 var nextTaskID = 1
+var falsePlaceholder = false
 
 // Users with different roles
 var users = []security.User{
@@ -37,75 +50,9 @@ var users = []security.User{
 	{Username: "user", Password: "user123", Scopes: []string{"user"}},
 }
 
-func main() {
-	engine := we.New()
-
-	// 1. Session Management
-	sessionManager := we.DefaultSessionManager().
-		SessionTimeout(30 * time.Minute).
-		CookieName("taskapp_session").
-		CookieSecure(false).
-		CookieHttpOnly(true).
-		CookieSameSite(http.SameSiteLaxMode).
-		Build()
-	engine.SetSessionManager(sessionManager)
-
-	// 2. CORS Filter
-	corsFilter := filters.Cors().
-		AllowedOrigins("http://localhost:3000").
-		AllowedMethods("GET", "POST", "PUT", "DELETE").
-		AllowedHeaders("Content-Type", "Authorization").
-		AllowCredentials().
-		MaxAge(3600).
-		Build()
-	engine.AddFilter(corsFilter)
-
-	// 3. Security Headers Filter
-	securityHeadersFilter := filters.ResponseHeaders().
-		HSTS(31536000, true, false).
-		FrameOptions(filters.FrameOptionDeny).
-		NoSniff().
-		ReferrerPolicy(filters.ReferrerPolicyStrictOriginWhenCrossOrigin).
-		Build()
-	engine.AddFilter(securityHeadersFilter)
-
-	// 4. Authentication & Authorization
-	loginForm := security.DefaultLoginForm(security.LoginFormConfiguration{
-		Action: "/login",
-		Title:  "Task Manager - Login",
-	})
-
-	authProvider := security.LoginFormAuthenticationProvider(users...).
-		LoginForm(loginForm).
-		Required(true).
-		RedirectToForm(true).
-		DefaultAuthenticatedRedirectionPath("/app").
-		Build()
-
-	securityFilter := security.Filter(false).
-		// Public paths
-		Path("/", "/public/**", "/api/health").
-		Anonymous().
-		// App pages - requires authentication
-		Path("/app/**").
-		Authentication(authProvider).
-		Authorize().
-		// API - requires user scope
-		Path("/api/tasks/**").
-		Authentication(authProvider).
-		Authorize(security.Scope("user")).
-		// Admin API - requires admin scope
-		Path("/api/admin/**").
-		Authentication(authProvider).
-		Authorize(security.Scope("admin")).
-		Build()
-
-	engine.AddFilter(securityFilter)
-
-	// Public home page
-	engine.Handle("/", func(w http.ResponseWriter, scope we.RequestScope) error {
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `
+func home(w http.ResponseWriter, scope we.RequestScope) error {
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprint(w, `
 			<!DOCTYPE html>
 			<html>
 			<head>
@@ -143,22 +90,18 @@ func main() {
 			</body>
 			</html>
 		`)
-		return nil
-	})
+	return nil
+}
 
-	// Health check endpoint
-	engine.Handle("/api/health", func(w http.ResponseWriter, scope we.RequestScope) error {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"healthy","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
-		return nil
-	})
+func health(w http.ResponseWriter, _ we.RequestScope) error {
+	return util.ReplyJson(w, http.StatusOK, NewHealth())
+}
 
-	// App dashboard
-	engine.Handle("/app", func(w http.ResponseWriter, scope we.RequestScope) error {
-		user := scope.Get("user").(*security.User)
+func app(w http.ResponseWriter, scope we.RequestScope) error {
+	user := security.GetUser(scope)
 
-		w.Header().Set("Content-Type", "text/html")
-		html := fmt.Sprintf(`
+	w.Header().Set("Content-Type", "text/html")
+	html := fmt.Sprintf(`
 			<!DOCTYPE html>
 			<html>
 			<head>
@@ -246,102 +189,158 @@ func main() {
 			</html>
 		`, user.Username, user.Scopes)
 
-		fmt.Fprint(w, html)
-		return nil
-	})
+	fmt.Fprint(w, html)
+	return nil
+}
 
-	// API: List tasks
-	engine.HandleMethod("GET", "/api/tasks", func(w http.ResponseWriter, scope we.RequestScope) error {
-		taskList := make([]Task, 0, len(tasks))
-		for _, task := range tasks {
-			taskList = append(taskList, task)
-		}
+func list(w http.ResponseWriter, _ we.RequestScope) error {
+	taskList := make([]*Task, 0, len(tasks))
+	for _, task := range tasks {
+		taskList = append(taskList, task)
+	}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(taskList)
-		return nil
-	})
+	return util.ReplyJson(w, http.StatusOK, taskList)
+}
 
-	// API: Create task
-	engine.HandleMethod("POST", "/api/tasks", func(w http.ResponseWriter, scope we.RequestScope) error {
-		user := scope.Get("user").(*security.User)
+func create(w http.ResponseWriter, scope we.RequestScope) error {
+	user := security.GetUser(scope)
 
-		body, _ := io.ReadAll(scope.Request().Body)
+	task, err := util.ReadJsonBody[Task](scope)
+	if err != nil {
+		return events.New(400, "Invalid JSON")
+	}
 
-		var task Task
-		if err := json.Unmarshal(body, &task); err != nil {
-			return events.New(400, "Invalid JSON")
-		}
+	if task.Title == nil || *task.Title == "" {
+		return events.New(400, "Title is required")
+	}
 
-		if task.Title == "" {
+	task.ID = nextTaskID
+	nextTaskID++
+	task.CreatedBy = user.Username
+	task.CreatedAt = time.Now()
+	task.Completed = &falsePlaceholder
+
+	tasks[task.ID] = task
+
+	return util.ReplyJson(w, http.StatusCreated, task)
+}
+
+func update(w http.ResponseWriter, scope we.RequestScope) error {
+	var taskID int
+	fmt.Sscanf(scope.Var("id"), "%d", &taskID)
+
+	task, found := tasks[taskID]
+	if !found {
+		return events.New(404, "Task not found")
+	}
+
+	updatedTask, err := util.ReadJsonBody[Task](scope)
+	if err != nil {
+		return events.New(400, "Invalid JSON")
+	}
+
+	if updatedTask.Title != nil {
+		if *updatedTask.Title == "" {
 			return events.New(400, "Title is required")
 		}
+		task.Title = updatedTask.Title
+	}
+	if updatedTask.Description != nil {
+		task.Description = updatedTask.Description
+	}
+	if updatedTask.Completed != nil {
+		task.Completed = updatedTask.Completed
+	}
 
-		task.ID = nextTaskID
-		nextTaskID++
-		task.CreatedBy = user.Username
-		task.CreatedAt = time.Now()
-		task.Completed = false
+	tasks[taskID] = task
 
-		tasks[task.ID] = task
+	return util.ReplyJson(w, http.StatusOK, task)
+}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(task)
-		return nil
+func del(w http.ResponseWriter, scope we.RequestScope) error {
+	var taskID int
+	fmt.Sscanf(scope.Var("id"), "%d", &taskID)
+
+	if _, found := tasks[taskID]; !found {
+		return events.New(404, "Task not found")
+	}
+
+	delete(tasks, taskID)
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+func admin(w http.ResponseWriter, scope we.RequestScope) error {
+	return util.ReplyJson(w, http.StatusOK, users)
+}
+
+func logout(w http.ResponseWriter, scope we.RequestScope) error {
+	scope.SetInSession(security.UserAttributeName, nil)
+	return events.FoundRedirect.WithAttribute("/")
+}
+
+func main() {
+
+	// 1. Session Management
+	sessionManager := we.DefaultSessionManager().
+		SessionTimeout(30 * time.Minute).
+		CookieName("taskapp_session").
+		CookieSecure(false).
+		CookieHttpOnly(true).
+		CookieSameSite(http.SameSiteLaxMode).
+		Build()
+
+	// 2. CORS Filter
+	corsFilter := filters.Cors().
+		AllowedOrigins("http://localhost:3000").
+		AllowedMethods("GET", "POST", "PUT", "DELETE").
+		AllowedHeaders("Content-Type", "Authorization").
+		AllowCredentials().
+		MaxAge(3600).
+		Build()
+
+	// 3. Security Headers Filter
+	securityHeadersFilter := filters.ResponseHeaders().
+		HSTS(31536000, true, false).
+		FrameOptions(filters.FrameOptionDeny).NoSniff().
+		ReferrerPolicy(filters.ReferrerPolicyStrictOriginWhenCrossOrigin).
+		Build()
+
+	// 4. Authentication & Authorization
+	loginForm := security.DefaultLoginForm(security.LoginFormConfiguration{
+		Action: "/login",
+		Title:  "Task Manager - Login",
 	})
 
-	// API: Update task
-	engine.HandleMethod("PUT", "/api/tasks/{id}", func(w http.ResponseWriter, scope we.RequestScope) error {
-		var taskID int
-		fmt.Sscanf(scope.Var("id"), "%d", &taskID)
+	authProvider := security.LoginFormAuthenticationProvider(users...).
+		LoginForm(loginForm).Required(true).RedirectToForm(true).
+		DefaultAuthenticatedRedirectionPath("/app").
+		Build()
 
-		task, found := tasks[taskID]
-		if !found {
-			return events.New(404, "Task not found")
-		}
+	securityFilter := security.Filter(false).
+		// App pages - requires authentication
+		Path("/app/**").Authentication(authProvider).Authorize().
+		// API - requires user scope
+		Path("/api/tasks/**").Authentication(authProvider).Authorize(security.Scope("user")).
+		// Admin API - requires admin scope
+		Path("/api/admin/**").Authentication(authProvider).Authorize(security.Scope("admin")).
+		Build()
 
-		body, _ := io.ReadAll(scope.Request().Body)
-		var updates map[string]interface{}
-		json.Unmarshal(body, &updates)
-
-		if title, ok := updates["title"].(string); ok {
-			task.Title = title
-		}
-		if desc, ok := updates["description"].(string); ok {
-			task.Description = desc
-		}
-		if completed, ok := updates["completed"].(bool); ok {
-			task.Completed = completed
-		}
-
-		tasks[taskID] = task
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(task)
-		return nil
-	})
-
-	// API: Delete task
-	engine.HandleMethod("DELETE", "/api/tasks/{id}", func(w http.ResponseWriter, scope we.RequestScope) error {
-		var taskID int
-		fmt.Sscanf(scope.Var("id"), "%d", &taskID)
-
-		if _, found := tasks[taskID]; !found {
-			return events.New(404, "Task not found")
-		}
-
-		delete(tasks, taskID)
-		w.WriteHeader(http.StatusNoContent)
-		return nil
-	})
-
-	// Admin: List all users (admin only)
-	engine.Handle("/api/admin/users", func(w http.ResponseWriter, scope we.RequestScope) error {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(users)
-		return nil
-	})
+	engine := we.New().
+		SessionManager(sessionManager).
+		Filter(corsFilter).
+		Filter(securityHeadersFilter).
+		Filter(securityFilter).
+		Handle("/", home).                              // Public home page
+		Handle("/api/health", health).                  // Health check endpoint
+		Handle("/app", app).                            // App dashboard
+		Handle("/logout", logout).                      // log out
+		HandleMethod("GET", "/api/tasks", list).        // API: List tasks
+		HandleMethod("POST", "/api/tasks", create).     // API: Create task
+		HandleMethod("PUT", "/api/tasks/{id}", update). // API: Update task
+		HandleMethod("DELETE", "/api/tasks/{id}", del). // API: Delete task
+		Handle("/api/admin/users", admin).              // Admin: List all users (admin only)
+		Build()
 
 	log.Println("Task Manager Application")
 	log.Println("=========================")

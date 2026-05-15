@@ -168,8 +168,8 @@ main()
 
 - [03-session-management](../03-session-management/) - Session details
 - [05-basic-auth](../05-basic-auth/) - Authentication
-- [10-authorization](../10-authorization/) - Authorization patterns
-- [12-rest-api](../12-rest-api/) - REST API patterns
+- [08-authorization](../08-authorization/) - Authorization patterns
+- [10-rest-api](../10-rest-api/) - REST API patterns
 
 ## Documentation
 
