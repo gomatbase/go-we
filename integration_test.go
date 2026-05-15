@@ -22,18 +22,16 @@ import (
 
 func TestIntegrationSessionsWithFilters(t *testing.T) {
 	t.Run("Sessions work with filters and handlers", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
 		// Configure sessions
 		sessionMgr := we.DefaultSessionManager().
 			CookieSecure(false).
 			Build()
-		engine.SetSessionManager(sessionMgr)
+		builder.SessionManager(sessionMgr)
 
 		// Add filter to track request count in session
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			count := r.GetFromSession("count")
 			if count == nil {
 				count = 0
@@ -43,7 +41,7 @@ func TestIntegrationSessionsWithFilters(t *testing.T) {
 		}))
 
 		// Handler returns request count
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			count := r.GetFromSession("count")
 			_, _ = w.Write([]byte(fmt.Sprintf("count:%d", count)))
 			return nil
@@ -52,7 +50,8 @@ func TestIntegrationSessionsWithFilters(t *testing.T) {
 		// First request
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Body.String() != "count:1" {
 			t.Errorf("First request: expected count:1, got %s", w.Body.String())
@@ -69,21 +68,19 @@ func TestIntegrationSessionsWithFilters(t *testing.T) {
 		req = httptest.NewRequest(http.MethodGet, "/", nil)
 		req.AddCookie(sessionCookie)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Body.String() != "count:2" {
 			t.Errorf("Second request: expected count:2, got %s", w.Body.String())
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestIntegrationAuthenticationWithAuthorization(t *testing.T) {
 	t.Run("Basic auth with scope-based authorization", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
 		// Setup users with different scopes
 		adminUser := security.User{
@@ -110,21 +107,22 @@ func TestIntegrationAuthenticationWithAuthorization(t *testing.T) {
 			Authorize(security.Scope("user")).
 			Build()
 
-		engine.AddFilter(secFilter)
+		builder.Filter(secFilter)
 
 		// Public endpoint
-		engine.Handle("/", simpleHandler("public"))
+		builder.Handle("/", simpleHandler("public"))
 
 		// Admin endpoint
-		engine.Handle("/admin/users", simpleHandler("admin only"))
+		builder.Handle("/admin/users", simpleHandler("admin only"))
 
 		// User endpoint
-		engine.Handle("/api/data", simpleHandler("user data"))
+		builder.Handle("/api/data", simpleHandler("user data"))
 
 		// Test 1: Public access works
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("Public: expected 200, got %d", w.Code)
@@ -136,7 +134,7 @@ func TestIntegrationAuthenticationWithAuthorization(t *testing.T) {
 		// when accessed without credentials, since anonymous user is "authenticated" but not authorized
 		req = httptest.NewRequest(http.MethodGet, "/admin/users", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 403 {
 			t.Errorf("Admin no auth: expected 403, got %d", w.Code)
@@ -146,7 +144,7 @@ func TestIntegrationAuthenticationWithAuthorization(t *testing.T) {
 		req = httptest.NewRequest(http.MethodGet, "/admin/users", nil)
 		req.SetBasicAuth("user", "user123")
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 403 {
 			t.Errorf("Admin regular user: expected 403, got %d", w.Code)
@@ -156,7 +154,7 @@ func TestIntegrationAuthenticationWithAuthorization(t *testing.T) {
 		req = httptest.NewRequest(http.MethodGet, "/admin/users", nil)
 		req.SetBasicAuth("admin", "admin123")
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("Admin with admin: expected 200, got %d", w.Code)
@@ -169,7 +167,7 @@ func TestIntegrationAuthenticationWithAuthorization(t *testing.T) {
 		req = httptest.NewRequest(http.MethodGet, "/api/data", nil)
 		req.SetBasicAuth("user", "user123")
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("API with user: expected 200, got %d", w.Code)
@@ -179,21 +177,19 @@ func TestIntegrationAuthenticationWithAuthorization(t *testing.T) {
 		req = httptest.NewRequest(http.MethodGet, "/api/data", nil)
 		req.SetBasicAuth("admin", "admin123")
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("API with admin: expected 200, got %d", w.Code)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestIntegrationCORSWithSecurity(t *testing.T) {
 	t.Run("CORS filter with authentication", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
 		// Setup CORS
 		corsFilter := filters.Cors().
@@ -203,7 +199,7 @@ func TestIntegrationCORSWithSecurity(t *testing.T) {
 			AllowCredentials().
 			Build()
 
-		engine.AddFilter(corsFilter)
+		builder.Filter(corsFilter)
 
 		// Setup auth
 		user := security.User{
@@ -218,16 +214,17 @@ func TestIntegrationCORSWithSecurity(t *testing.T) {
 			Authorize().
 			Build()
 
-		engine.AddFilter(secFilter)
+		builder.Filter(secFilter)
 
-		engine.Handle("/api/data", simpleHandler("secure data"))
+		builder.Handle("/api/data", simpleHandler("secure data"))
 
 		// Test actual request with auth (skip preflight test due to engine bug with nil payload)
 		req := httptest.NewRequest(http.MethodGet, "/api/data", nil)
 		req.Header.Set("Origin", "https://example.com")
 		req.SetBasicAuth("test", "test123")
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("Authenticated request: expected 200, got %d", w.Code)
@@ -236,28 +233,26 @@ func TestIntegrationCORSWithSecurity(t *testing.T) {
 			t.Error("Missing CORS header in response")
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestIntegrationComplexRouting(t *testing.T) {
 	t.Run("Complex routing with path variables and wildcards", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
 		// Fixed paths take precedence
-		engine.Handle("/api/users/me", simpleHandler("current user"))
+		builder.Handle("/api/users/me", simpleHandler("current user"))
 
 		// Path with variable
-		engine.Handle("/api/users/{id}", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/api/users/{id}", func(w http.ResponseWriter, r we.RequestScope) error {
 			id := r.Var("id")
 			_, _ = w.Write([]byte(fmt.Sprintf("user:%s", id)))
 			return nil
 		})
 
 		// Path with wildcard
-		engine.Handle("/api/files/*", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/api/files/*", func(w http.ResponseWriter, r we.RequestScope) error {
 			// Wildcards are not stored as variables - extract from URL path
 			path := r.Request().URL.Path
 			filename := strings.TrimPrefix(path, "/api/files/")
@@ -266,12 +261,13 @@ func TestIntegrationComplexRouting(t *testing.T) {
 		})
 
 		// Catch-all
-		engine.Handle("/api/**", simpleHandler("api fallback"))
+		builder.Handle("/api/**", simpleHandler("api fallback"))
 
 		// Test fixed path
 		req := httptest.NewRequest(http.MethodGet, "/api/users/me", nil)
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Body.String() != "current user" {
 			t.Errorf("Fixed path: expected 'current user', got %s", w.Body.String())
@@ -280,7 +276,7 @@ func TestIntegrationComplexRouting(t *testing.T) {
 		// Test path variable
 		req = httptest.NewRequest(http.MethodGet, "/api/users/123", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Body.String() != "user:123" {
 			t.Errorf("Path variable: expected 'user:123', got %s", w.Body.String())
@@ -289,7 +285,7 @@ func TestIntegrationComplexRouting(t *testing.T) {
 		// Test single wildcard
 		req = httptest.NewRequest(http.MethodGet, "/api/files/document.pdf", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Body.String() != "file:document.pdf" {
 			t.Errorf("Wildcard: expected 'file:document.pdf', got %s", w.Body.String())
@@ -298,21 +294,19 @@ func TestIntegrationComplexRouting(t *testing.T) {
 		// Test catch-all
 		req = httptest.NewRequest(http.MethodGet, "/api/other/nested/path", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Body.String() != "api fallback" {
 			t.Errorf("Catch-all: expected 'api fallback', got %s", w.Body.String())
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestIntegrationRESTfulAPI(t *testing.T) {
 	t.Run("Full RESTful API with JSON", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
 		// In-memory data store
 		users := map[string]map[string]interface{}{
@@ -322,7 +316,7 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		nextID := 3
 
 		// List users
-		engine.HandleMethod(http.MethodGet, "/users", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.HandleMethod(http.MethodGet, "/users", func(w http.ResponseWriter, r we.RequestScope) error {
 			userList := make([]map[string]interface{}, 0, len(users))
 			for _, user := range users {
 				userList = append(userList, user)
@@ -334,7 +328,7 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		})
 
 		// Get user
-		engine.HandleMethod(http.MethodGet, "/users/{id}", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.HandleMethod(http.MethodGet, "/users/{id}", func(w http.ResponseWriter, r we.RequestScope) error {
 			id := r.Var("id")
 			user, exists := users[id]
 			if !exists {
@@ -350,7 +344,7 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		})
 
 		// Create user
-		engine.HandleMethod(http.MethodPost, "/users", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.HandleMethod(http.MethodPost, "/users", func(w http.ResponseWriter, r we.RequestScope) error {
 			var input map[string]interface{}
 			if err := json.NewDecoder(r.Request().Body).Decode(&input); err != nil {
 				return events.NewPayload(400, "Bad Request", &events.Payload{
@@ -372,7 +366,7 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		})
 
 		// Update user
-		engine.HandleMethod(http.MethodPut, "/users/{id}", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.HandleMethod(http.MethodPut, "/users/{id}", func(w http.ResponseWriter, r we.RequestScope) error {
 			id := r.Var("id")
 			if _, exists := users[id]; !exists {
 				return events.New(404, "Not Found")
@@ -393,7 +387,7 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		})
 
 		// Delete user
-		engine.HandleMethod(http.MethodDelete, "/users/{id}", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.HandleMethod(http.MethodDelete, "/users/{id}", func(w http.ResponseWriter, r we.RequestScope) error {
 			id := r.Var("id")
 			if _, exists := users[id]; !exists {
 				return events.New(404, "Not Found")
@@ -406,7 +400,8 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		// Test: List users
 		req := httptest.NewRequest(http.MethodGet, "/users", nil)
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("List: expected 200, got %d", w.Code)
@@ -423,7 +418,7 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		// Test: Get specific user
 		req = httptest.NewRequest(http.MethodGet, "/users/1", nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("Get: expected 200, got %d", w.Code)
@@ -441,7 +436,7 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		newUser := `{"name":"Charlie"}`
 		req = httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(newUser))
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 201 {
 			t.Errorf("Create: expected 201, got %d", w.Code)
@@ -460,7 +455,7 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		updated := `{"name":"Charlie Updated"}`
 		req = httptest.NewRequest(http.MethodPut, "/users/"+newUserID, strings.NewReader(updated))
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("Update: expected 200, got %d", w.Code)
@@ -469,7 +464,7 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		// Test: Delete user
 		req = httptest.NewRequest(http.MethodDelete, "/users/"+newUserID, nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 204 {
 			t.Errorf("Delete: expected 204, got %d", w.Code)
@@ -478,33 +473,31 @@ func TestIntegrationRESTfulAPI(t *testing.T) {
 		// Test: Get deleted user (should 404)
 		req = httptest.NewRequest(http.MethodGet, "/users/"+newUserID, nil)
 		w = httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 404 {
 			t.Errorf("Get deleted: expected 404, got %d", w.Code)
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }
 
 func TestIntegrationFilterOrder(t *testing.T) {
 	t.Run("Multiple filters execute in correct order", func(t *testing.T) {
-		engine := we.New()
-		var shutdown func() error
-		engine.HookShutdownFunction(&shutdown)
+		builder := we.New()
 
 		var executionOrder []string
 
 		// Filter 1: Logging
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			executionOrder = append(executionOrder, "filter1")
 			r.Set("filter1", true)
 			return nil
 		}))
 
 		// Filter 2: Authentication check
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			executionOrder = append(executionOrder, "filter2")
 			if r.Get("filter1") != true {
 				return events.New(500, "Filter order wrong")
@@ -514,7 +507,7 @@ func TestIntegrationFilterOrder(t *testing.T) {
 		}))
 
 		// Filter 3: Response headers
-		engine.AddFilter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
+		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
 			executionOrder = append(executionOrder, "filter3")
 			if r.Get("filter2") != true {
 				return events.New(500, "Filter order wrong")
@@ -523,7 +516,7 @@ func TestIntegrationFilterOrder(t *testing.T) {
 			return nil
 		}))
 
-		engine.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
+		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
 			executionOrder = append(executionOrder, "handler")
 			_, _ = w.Write([]byte("ok"))
 			return nil
@@ -531,7 +524,8 @@ func TestIntegrationFilterOrder(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		w := httptest.NewRecorder()
-		engine.Handler().ServeHTTP(w, req)
+		engine := builder.Build()
+		engine.ServeHTTP(w, req)
 
 		if w.Code != 200 {
 			t.Errorf("Expected 200, got %d", w.Code)
@@ -552,6 +546,6 @@ func TestIntegrationFilterOrder(t *testing.T) {
 			t.Error("Custom header not set by filter")
 		}
 
-		_ = shutdown()
+		_ = engine.Shutdown()
 	})
 }

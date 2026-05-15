@@ -21,7 +21,7 @@ func Example_corsBasic() {
 		AllowedMethods("GET", "POST").
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine.Filter(corsFilter)
 
 	fmt.Println("CORS filter configured for specific origins")
 	// Output: CORS filter configured for specific origins
@@ -37,7 +37,7 @@ func Example_corsWildcard() {
 		AllowedMethods("GET", "POST", "PUT", "DELETE").
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine.Filter(corsFilter)
 
 	fmt.Println("CORS filter configured for all origins")
 	// Output: CORS filter configured for all origins
@@ -55,7 +55,7 @@ func Example_corsWithCredentials() {
 		AllowCredentials().
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine.Filter(corsFilter)
 
 	fmt.Println("CORS filter configured with credentials")
 	// Output: CORS filter configured with credentials
@@ -85,7 +85,7 @@ func Example_corsPathSpecific() {
 		Add().
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine.Filter(corsFilter)
 
 	fmt.Println("CORS filter configured with path-specific rules")
 	// Output: CORS filter configured with path-specific rules
@@ -105,7 +105,7 @@ func Example_corsAdvanced() {
 		MaxAge(7200). // 2 hours
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine.Filter(corsFilter)
 
 	fmt.Println("CORS filter configured with advanced options")
 	// Output: CORS filter configured with advanced options
@@ -126,7 +126,7 @@ func Example_corsMultiplePaths() {
 		Add().
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine.Filter(corsFilter)
 
 	fmt.Println("CORS filter configured for multiple paths")
 	// Output: CORS filter configured for multiple paths
@@ -147,7 +147,7 @@ func Example_corsPublicAPI() {
 		Add().
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine.Filter(corsFilter)
 
 	fmt.Println("CORS filter configured for public API")
 	// Output: CORS filter configured for public API
@@ -169,7 +169,7 @@ func Example_corsDisabled() {
 		Add().
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine.Filter(corsFilter)
 
 	fmt.Println("CORS filter configured with disabled paths")
 	// Output: CORS filter configured with disabled paths
@@ -182,7 +182,7 @@ func Example_responseHeadersBasic() {
 	// Configure with secure defaults (NoSniff + FrameOptions SAMEORIGIN)
 	filter := filters.ResponseHeaders().Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured with secure defaults")
 	// Output: ResponseHeaders filter configured with secure defaults
@@ -200,7 +200,7 @@ func Example_responseHeadersSecurity() {
 		ReferrerPolicy(filters.ReferrerPolicyStrictOriginWhenCrossOrigin).
 		Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured with security headers")
 	// Output: ResponseHeaders filter configured with security headers
@@ -216,7 +216,7 @@ func Example_responseHeadersHSTS() {
 		HSTS(63072000, true, true).
 		Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured with HSTS")
 	// Output: ResponseHeaders filter configured with HSTS
@@ -233,7 +233,7 @@ func Example_responseHeadersCustom() {
 		Header("Cache-Control", "no-store, no-cache, must-revalidate").
 		Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured with custom headers")
 	// Output: ResponseHeaders filter configured with custom headers
@@ -248,7 +248,7 @@ func Example_responseHeadersCSP() {
 		CSP("default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'").
 		Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured with CSP")
 	// Output: ResponseHeaders filter configured with CSP
@@ -275,7 +275,7 @@ func Example_responseHeadersPathSpecific() {
 		Add().
 		Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured with path-specific rules")
 	// Output: ResponseHeaders filter configured with path-specific rules
@@ -293,7 +293,7 @@ func Example_responseHeadersDisableDefaults() {
 		CSP("default-src 'self'").
 		Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured with disabled defaults")
 	// Output: ResponseHeaders filter configured with disabled defaults
@@ -314,7 +314,7 @@ func Example_responseHeadersDisabledPaths() {
 		Add().
 		Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured with disabled paths")
 	// Output: ResponseHeaders filter configured with disabled paths
@@ -336,7 +336,7 @@ func Example_responseHeadersAPI() {
 		Add().
 		Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured for API")
 	// Output: ResponseHeaders filter configured for API
@@ -360,7 +360,7 @@ func Example_responseHeadersMaxSecurity() {
 		Add().
 		Build()
 
-	engine.AddFilter(filter)
+	engine.Filter(filter)
 
 	fmt.Println("ResponseHeaders filter configured with maximum security")
 	// Output: ResponseHeaders filter configured with maximum security
