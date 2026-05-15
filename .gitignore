@@ -2,3 +2,4 @@
 cover.out
 test.html
 *.test
+examples/11-static-files/static/

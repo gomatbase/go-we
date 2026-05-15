@@ -50,10 +50,9 @@ authProvider := security.LoginFormAuthenticationProvider(users...).
 Form-based login **requires sessions** to be enabled:
 
 ```go
-engine.SetSessionManager(we.DefaultSessionManager().Build())
+builder.SetSessionManager(we.DefaultSessionManager().Build())
 ```
 
 ## Next Steps
 
-- [08-oauth2-sso](../08-oauth2-sso/) - OAuth2/OpenID Connect
-- [10-authorization](../10-authorization/) - Advanced authorization
+- [08-authorization](../08-authorization/) - Advanced authorization

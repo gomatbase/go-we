@@ -65,4 +65,4 @@ securityFilter := security.Filter(false).
 
 - [06-bearer-token](../06-bearer-token/) - Token-based authentication
 - [07-form-login](../07-form-login/) - Form-based login
-- [10-authorization](../10-authorization/) - Advanced authorization patterns
+- [08-authorization](../08-authorization/) - Advanced authorization patterns

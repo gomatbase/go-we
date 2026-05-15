@@ -16,7 +16,7 @@ go run main.go
 
 1. **[01-basic-routing](01-basic-routing/)** - Simple HTTP routing with GET/POST handlers
 2. **[02-path-variables](02-path-variables/)** - Path variables, wildcards, and URL parameters
-3. **[11-error-handling](11-error-handling/)** - Custom error handlers and error responses
+3. **[09-error-handling](09-error-handling/)** - Custom error handlers and error responses
 
 ### Session & State Management
 
@@ -28,21 +28,19 @@ go run main.go
 5. **[05-basic-auth](05-basic-auth/)** - HTTP Basic Authentication
 6. **[06-bearer-token](06-bearer-token/)** - Bearer token authentication with JWT
 7. **[07-form-login](07-form-login/)** - Form-based login authentication
-8. **[08-oauth2-sso](08-oauth2-sso/)** - OAuth2/OpenID Connect integration
-9. **[09-mtls-auth](09-mtls-auth/)** - Mutual TLS (mTLS) authentication
 
 ### Authorization
 
-10. **[10-authorization](10-authorization/)** - Role-based access control (RBAC)
+10. **[08-authorization](08-authorization/)** - Role-based access control (RBAC)
 
 ### API Development
 
-12. **[12-rest-api](12-rest-api/)** - RESTful API with JSON request/response
-13. **[13-static-files](13-static-files/)** - Serving static files and assets
+12. **[10-rest-api](10-rest-api/)** - RESTful API with JSON request/response
+13. **[11-static-files](11-static-files/)** - Serving static files and assets
 
 ### Complete Applications
 
-14. **[14-full-application](14-full-application/)** - Complete application with authentication, authorization, and session management
+14. **[12-full-application](12-full-application/)** - Complete application with authentication, authorization, and session management
 
 ## Running Examples
 
@@ -76,10 +74,10 @@ We recommend following the examples in order:
 1. Start with **01-basic-routing** to understand routing basics
 2. Move to **02-path-variables** for dynamic routing
 3. Learn **03-session-management** for stateful applications
-4. Explore authentication examples (05-09) based on your needs
-5. Study **10-authorization** for access control
-6. Review **12-rest-api** for API development
-7. Examine **14-full-application** to see everything together
+4. Explore authentication examples (05-07) based on your needs
+5. Study **08-authorization** for access control
+6. Review **10-rest-api** for API development
+7. Examine **12-full-application** to see everything together
 
 ## Additional Resources
 

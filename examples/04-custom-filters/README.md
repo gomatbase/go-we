@@ -374,6 +374,6 @@ path-based security filter application.
 ## Next Steps
 
 - Move on to [05-basic-auth](../05-basic-auth/) for authentication examples
-- See [10-authorization](../10-authorization/) for path-based filtering with the security package
+- See [08-authorization](../08-authorization/) for path-based filtering with the security package
 - Read [BEST_PRACTICES](../../docs/BEST_PRACTICES.md) for filter patterns in production
 - Check [ARCHITECTURE](../../docs/ARCHITECTURE.md) for filter chain internals
