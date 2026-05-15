@@ -21,49 +21,31 @@ The example automatically creates sample static files in `./static/` directory.
 
 ### Basic Static File Serving
 
+Using standard library file serving utilities with plain handler conversion
+
 ```go
 fileServer := http.FileServer(http.Dir("./static"))
+handler := http.StripPrefix("/static/", fileServer)
 
-engine.Handle("/static/**", func(w http.ResponseWriter, scope we.RequestScope) error {
-    http.StripPrefix("/static/", fileServer).ServeHTTP(w, scope.Request())
-    return nil
-})
+builder.Handle("/static/**", convert.Handler(handler))
 ```
 
 ### With Custom Headers
 
+Encapsulating standard library file serving utilities with a we.HandlerFunction to add custom behaviour.
+
 ```go
-engine.Handle("/assets/**", func(w http.ResponseWriter, scope we.RequestScope) error {
-    // Add cache headers for better performance
-    w.Header().Set("Cache-Control", "public, max-age=31536000")
+
+fileServer := http.FileServer(http.Dir("./static"))
+handler := http.StripPrefix("/assets/", fileServer)
+
+builder.Handle("/assets/**", func(w http.ResponseWriter, scope we.RequestScope) error {
+    // Add cache headers
+    w.Header().Set("Cache-Control", "public, max-age=31536000") // 1 year
     
-    fs := http.FileServer(http.Dir("./static"))
-    http.StripPrefix("/assets/", fs).ServeHTTP(w, scope.Request())
+    handler.ServeHTTP(w, scope.Request())
     return nil
-})
-```
-
-## Features
-
-- **Automatic MIME detection** - Correct Content-Type headers
-- **ETag support** - Browser caching
-- **Range requests** - Partial content (useful for video/audio)
-- **Directory listing** - Optional (disabled by default)
-- **Compression** - Can be combined with compression middleware
-
-## Directory Structure
-
-```
-project/
-├── main.go
-└── static/
-    ├── index.html
-    ├── style.css
-    ├── script.js
-    ├── images/
-    │   └── logo.png
-    └── fonts/
-        └── custom.woff2
+    })
 ```
 
 ## Best Practices
@@ -98,5 +80,5 @@ w.Header().Set("Cache-Control", "public, max-age=3600")
 
 ## Next Steps
 
-- [14-full-application](../14-full-application/) - Complete application example
+- [12-full-application](../12-full-application/) - Complete application example
 - [BEST_PRACTICES](../../docs/BEST_PRACTICES.md) - Production best practices
