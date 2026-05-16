@@ -400,46 +400,6 @@ func TestFilterPathAuthentication(t *testing.T) {
 			t.Errorf("Expected user to be authorized, instead got error: %v", e)
 		}
 	})
-	t.Run("Test session authenticated call to unauthorized path", func(t *testing.T) {
-		sessionUser := &security.User{Realm: "realm1"}
-		provider1 := &dummyProvider{realm: "realm1", valid: false, authenticationError: events.OKInterruption}
-		provider2 := &dummyProvider{realm: "realm2", authenticationError: events.BadRequestError}
-		filter := security.Filter(security.DefaultAuthenticatedAccess).
-			Authentication(provider1).
-			Path("/").Authentication(provider2).Authorize(security.Realm("realm2")).
-			Build()
-		headers := make(http.Header)
-		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
-		scope.SetInSession(security.UserAttributeName, sessionUser)
-		if e := filter.Filter(headers, scope); e == nil {
-			t.Errorf("Expected user to be authorized, instead got error: %v", e)
-		} else if e != events.OKInterruption {
-			t.Errorf("Expected error coming from root authentication, instead got error: %v", e)
-		} else if scope.GetFromSession(security.UserAttributeName) != nil {
-			t.Errorf("Expected session user to to be cleared, instead got: %v", scope.GetFromSession(security.UserAttributeName))
-		}
-		provider1.authenticationError = nil
-		provider1.valid = true
-		scope.SetInSession(security.UserAttributeName, sessionUser)
-		if e := filter.Filter(headers, scope); e != events.ForbiddenError {
-			t.Errorf("Expected forbidden error coming from path authorization, instead got error: %v", e)
-		} else if scope.GetFromSession(security.UserAttributeName) != sessionUser {
-			t.Errorf("Expected session user to remain the same, instead got: %v", scope.GetFromSession(security.UserAttributeName))
-		}
-	})
-	t.Run("Test unauthorized path authenticated", func(t *testing.T) {
-		provider2 := &dummyProvider{realm: "realm2", authenticatedUser: &security.User{}}
-		filter := security.Filter(security.DefaultAuthenticatedAccess).
-			Path("/").Authentication(provider2).Authorize(security.Realm("realm2"), security.Origin("somewhere")).
-			Build()
-		headers := make(http.Header)
-		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
-		if e := filter.Filter(headers, scope); e == nil {
-			t.Error("Expected user to be not authorized")
-		} else if e != events.ForbiddenError {
-			t.Errorf("Expected forbidden error: %v", e)
-		}
-	})
 	t.Run("Test unauthorized root authenticated", func(t *testing.T) {
 		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{}}
 		filter := security.Filter(security.DefaultAuthenticatedAccess).

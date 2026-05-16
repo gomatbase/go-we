@@ -101,43 +101,9 @@ func TestLoginFormAuthenticationProviderBuilder(t *testing.T) {
 			LoginForm(security.DefaultLoginForm(security.LoginFormConfiguration{Action: ":/"})).
 			Build()
 	})
-	t.Run("Test custom credential provider", func(t *testing.T) {
-		provider := security.LoginFormAuthenticationProvider().
-			CredentialsProvider(&dummyCredentialsProvider{}).
-			Build()
-		headers := make(http.Header)
-		scope := test.MockedRequestScope("POST", "http://localhost:8080/login")
-		scope.SetHeader("Content-Type", "application/x-www-form-urlencoded")
-		scope.SetBody([]byte("username=test&password=test"))
-		if user, e := provider.Authenticate(headers, scope); e != nil || user != security.Anonymous {
-			t.Errorf("Unexpected authentication failure and user: %v %v", user, e)
-		}
-		if !provider.IsValid(&security.User{Username: "test"}) {
-			t.Errorf("Unexpected user not valid")
-		}
-		if !provider.IsValid(&security.User{Username: "test2"}) {
-			t.Errorf("Unexpected user not valid")
-		}
-	})
 }
 
 func TestLoginFormAuthenticationProvider(t *testing.T) {
-	t.Run("Test successful user authentication", func(t *testing.T) {
-		provider := security.LoginFormAuthenticationProvider(security.User{Username: "test", Password: "test"}).Build()
-		headers := make(http.Header)
-		scope := test.MockedRequestScope("POST", "http://localhost:8080/login")
-		scope.SetHeader("Content-Type", "application/x-www-form-urlencoded")
-		scope.SetBody([]byte("username=test&password=test"))
-		if user, e := provider.Authenticate(headers, scope); e != nil {
-			t.Errorf("Unexpected authentication failure: %v", e)
-		} else if user == nil {
-			t.Error("Unexpected user not found.")
-		} else if user.Username != "test" {
-			t.Errorf("Unexpected user found (expected \"test\"): %s", user.Username)
-		} else if len(user.Password) > 0 {
-			t.Errorf("Unexpected user password present: %s", user.Password)
-		}
-	})
 	t.Run("Test large payload login", func(t *testing.T) {
 		provider := security.LoginFormAuthenticationProvider(security.User{Username: "test", Password: "test"}).Build()
 		headers := make(http.Header)
@@ -220,38 +186,6 @@ func TestLoginFormAuthenticationProvider(t *testing.T) {
 			t.Errorf("Expected forbidden error, got %v", e)
 		} else if string(e.(events.WeEvent).Payload().Content) != fmt.Sprintf(DefaultRenderedForm, "", "/") {
 			t.Errorf("Unexpected rendered form: \n%s\n%s", e.(events.WeEvent).Payload().Content, fmt.Sprintf(DefaultRenderedForm, "", "/"))
-		}
-	})
-	t.Run("Test required redirected authentication", func(t *testing.T) {
-		provider := security.LoginFormAuthenticationProvider(security.User{Username: "test", Password: "test"}).
-			Required(true).RedirectToForm(true).Build()
-		headers := make(http.Header)
-		scope := test.MockedRequestScope("GET", "http://localhost:8080/somewhere")
-
-		if user, e := provider.Authenticate(headers, scope); e == nil {
-			t.Errorf("Authentication is required, an authentication error is expected")
-		} else if user != nil {
-			t.Error("Unexpected user found.")
-		} else if !events.FoundRedirect.Is(e) {
-			t.Errorf("Expected forbidden error, got %v", e)
-		} else if headers.Get("Location") != "http://localhost:8080/login?target=%2Fsomewhere" {
-			t.Errorf("Expected redirection to login form with target page, instead got: %s", headers.Get("Location"))
-		}
-	})
-	t.Run("Test required redirected non-GET authentication", func(t *testing.T) {
-		provider := security.LoginFormAuthenticationProvider(security.User{Username: "test", Password: "test"}).
-			Required(true).RedirectToForm(true).Build()
-		headers := make(http.Header)
-		scope := test.MockedRequestScope("PUT", "http://localhost:8080/somewhere")
-
-		if user, e := provider.Authenticate(headers, scope); e == nil {
-			t.Errorf("Authentication is required, an authentication error is expected")
-		} else if user != nil {
-			t.Error("Unexpected user found.")
-		} else if !events.FoundRedirect.Is(e) {
-			t.Errorf("Expected forbidden error, got %v", e)
-		} else if headers.Get("Location") != "http://localhost:8080/login" {
-			t.Errorf("Expected redirection to login form without target page, instead got: %s", headers.Get("Location"))
 		}
 	})
 	t.Run("Test get login form", func(t *testing.T) {

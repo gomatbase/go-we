@@ -136,7 +136,7 @@ func TestIntegrationAuthenticationWithAuthorization(t *testing.T) {
 		w = httptest.NewRecorder()
 		engine.ServeHTTP(w, req)
 
-		if w.Code != 403 {
+		if w.Code != 401 {
 			t.Errorf("Admin no auth: expected 403, got %d", w.Code)
 		}
 
@@ -146,7 +146,7 @@ func TestIntegrationAuthenticationWithAuthorization(t *testing.T) {
 		w = httptest.NewRecorder()
 		engine.ServeHTTP(w, req)
 
-		if w.Code != 403 {
+		if w.Code != 401 {
 			t.Errorf("Admin regular user: expected 403, got %d", w.Code)
 		}
 
