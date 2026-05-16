@@ -179,6 +179,9 @@ type Engine interface {
 	GraciouslyShutdown(waitingTime time.Duration) error
 	// Listen starts the engine listening on the provided address. The engine will block until the server is stopped.
 	Listen(addr string) error
+	// ListenWithTls starts the engine listening on the provided address using https. A certificate and key file
+	// locations must be provided.
+	ListenWithTls(addr string, certFile string, keyFile string) error
 }
 
 // engine is a Engine implementation
