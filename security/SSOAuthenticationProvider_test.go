@@ -162,7 +162,7 @@ func TestSSOAuthenticationProvider(t *testing.T) {
 			t.Error("Authentication should have succeeded with redirection to root endpoint")
 		} else if user == nil {
 			t.Error("user should not be nil")
-		} else if !strings.HasPrefix(e.(events.WeEvent).Attribute(), "http://localhost:8080/root?") {
+		} else if !strings.HasPrefix(e.(events.WeEvent).Attribute(), "http://localhost:8080/root") {
 			t.Errorf("content-location should point to default endpoint : %s", headers.Get("Content-Location"))
 		} else if user.Username != "user1" {
 			t.Errorf("unexpectedt username : %v", user.Username)
