@@ -255,7 +255,7 @@ func TestFilterRootAuthentication(t *testing.T) {
 		filter := security.Filter(security.DefaultAuthenticatedAccess).Authentication(provider).Build()
 		headers := make(http.Header)
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
-		scope.SetInSession(security.UserAttributeName, &security.User{Realm: "realm"})
+		scope.Session().Set(security.UserAttributeName, &security.User{Realm: "realm"})
 		if e := filter.Filter(headers, scope); e != nil {
 			t.Errorf("Expected user to be authorized, instead got error: %v", e)
 		}
@@ -265,7 +265,7 @@ func TestFilterRootAuthentication(t *testing.T) {
 		filter := security.Filter(security.DefaultAuthenticatedAccess).Authentication(provider).Build()
 		headers := make(http.Header)
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
-		scope.SetInSession(security.UserAttributeName, &security.User{Realm: "realm"})
+		scope.Session().Set(security.UserAttributeName, &security.User{Realm: "realm"})
 		if e := filter.Filter(headers, scope); e != events.UnauthorizedError {
 			t.Errorf("Expected user to be unauthorized, instead got error: %v", e)
 		}
@@ -290,7 +290,7 @@ func TestFilterRootAuthentication(t *testing.T) {
 			t.Errorf("Expected user succeed in authentication, instead got error: %v", e)
 		} else if scope.Get(security.UserAttributeName) != nil {
 			t.Error("anonymous users should not be present in the request scope")
-		} else if scope.GetFromSession(security.UserAttributeName) != nil {
+		} else if scope.Session().Get(security.UserAttributeName) != nil {
 			t.Error("anonymous users should not be present in the session")
 		}
 	})
@@ -304,7 +304,7 @@ func TestFilterRootAuthentication(t *testing.T) {
 			t.Errorf("Expected user suceed in authentication, instead got error: %v", e)
 		} else if user := scope.Get(security.UserAttributeName); user == nil || user.(*security.User).Username != "username" {
 			t.Errorf("Expected authenticated user to be present in request, instead got: %v", user)
-		} else if user = scope.GetFromSession(security.UserAttributeName); user == nil || user.(*security.User).Username != "username" {
+		} else if user = scope.Session().Get(security.UserAttributeName); user == nil || user.(*security.User).Username != "username" {
 			t.Errorf("Expected authenticated user to be present in session, instead got: %v", user)
 		} else if user.(*security.User).Realm != "realm" {
 			t.Errorf("Expected authenticated user to have the realm attributed, instead got: %v", user.(*security.User).Realm)
@@ -395,7 +395,7 @@ func TestFilterPathAuthentication(t *testing.T) {
 			Build()
 		headers := make(http.Header)
 		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
-		scope.SetInSession(security.UserAttributeName, &security.User{Realm: "realm"})
+		scope.Session().Set(security.UserAttributeName, &security.User{Realm: "realm"})
 		if e := filter.Filter(headers, scope); e != nil {
 			t.Errorf("Expected user to be authorized, instead got error: %v", e)
 		}

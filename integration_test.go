@@ -32,17 +32,17 @@ func TestIntegrationSessionsWithFilters(t *testing.T) {
 
 		// Add filter to track request count in session
 		builder.Filter(we.FilterFunction(func(h http.Header, r we.RequestScope) error {
-			count := r.GetFromSession("count")
+			count := r.Session().Get("count")
 			if count == nil {
 				count = 0
 			}
-			r.SetInSession("count", count.(int)+1)
+			r.Session().Set("count", count.(int)+1)
 			return nil
 		}))
 
 		// Handler returns request count
 		builder.Handle("/", func(w http.ResponseWriter, r we.RequestScope) error {
-			count := r.GetFromSession("count")
+			count := r.Session().Get("count")
 			_, _ = w.Write([]byte(fmt.Sprintf("count:%d", count)))
 			return nil
 		})

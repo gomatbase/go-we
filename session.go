@@ -38,9 +38,21 @@ const (
 //  purges expired sessions support for immediate session expiration (logout) must be contemplated as well as a better
 //  way to handle attribute deletion.
 
-// Session object associated to a request (either the request comes with a Session identifier or it is created for
-// the request
-type Session struct {
+// Session interface provides methods for managing session attributes
+type Session interface {
+	// Get returns the value of an attribute stored in the session
+	Get(key string) any
+	// Set stores an attribute in the session
+	Set(key string, value any)
+	// Delete removes an attribute from the session
+	Delete(key string)
+	// Clear removes all attributes from the session
+	Clear()
+}
+
+// SessionObject is the internal implementation of a session associated to a request (either the request comes with
+// a session identifier or it is created for the request)
+type SessionObject struct {
 	// Status indicates if the Session has just been created (SessionStatusNew) or if it's an existing one (SessionStatusExisting)
 	Status uint
 
@@ -54,21 +66,41 @@ type Session struct {
 	Attributes map[string]any
 }
 
+// Get returns the value of an attribute stored in the session
+func (s *SessionObject) Get(key string) any {
+	return s.Attributes[key]
+}
+
+// Set stores an attribute in the session
+func (s *SessionObject) Set(key string, value any) {
+	s.Attributes[key] = value
+}
+
+// Delete removes an attribute from the session
+func (s *SessionObject) Delete(key string) {
+	delete(s.Attributes, key)
+}
+
+// Clear removes all attributes from the session
+func (s *SessionObject) Clear() {
+	s.Attributes = make(map[string]any)
+}
+
 // SessionManager manages a Session life-cycle
 type SessionManager interface {
 	// GetHttpSession gets an existing http session from storage. Non-existing, expired or mismatched session-ids should
 	// result in a new session and set in the response
-	GetHttpSession(w http.ResponseWriter, r *http.Request) *Session
+	GetHttpSession(w http.ResponseWriter, r *http.Request) Session
 }
 
 // SessionStorage interface for a session storage service
 type SessionStorage interface {
 	// Get retrieves a session by its session id. nil if none is found
-	Get(ctx context.Context, sessionId string) *Session
+	Get(ctx context.Context, sessionId string) *SessionObject
 	// Put stores/updates a session object, returns the existing object if updating or nil if new
-	Put(ctx context.Context, session *Session) *Session
+	Put(ctx context.Context, session *SessionObject) *SessionObject
 	// Delete deletes a session object referenced by its id. Return nil if no session is deleted.
-	Delete(ctx context.Context, sessionId string) *Session
+	Delete(ctx context.Context, sessionId string) *SessionObject
 	// PurgeOlderThan deletes from storage all sessions older than <age>
 	PurgeOlderThan(ctx context.Context, age time.Duration)
 }
@@ -131,8 +163,8 @@ type sessionManager struct {
 	storageMutex sync.Mutex
 }
 
-func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request) *Session {
-	var session *Session
+func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request) Session {
+	var session *SessionObject
 	sessionId, cookieFetchError := r.Cookie(sm.cookieName)
 	// only http.ErrNoCookie is possible.
 	if cookieFetchError == nil {
@@ -154,7 +186,7 @@ func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request)
 
 	if session == nil {
 		sm.storageMutex.Lock()
-		session = &Session{
+		session = &SessionObject{
 			Status:     SessionStatusNew,
 			LastUse:    time.Now(),
 			Id:         uuid.New().String(),
@@ -208,7 +240,7 @@ func (sm *sessionManager) purgeLoop(interval time.Duration) {
 
 // inMemorySessionStorage SessionStorage implementation for inMemory storage.
 type inMemorySessionStorage struct {
-	sessions map[string]*Session
+	sessions map[string]*SessionObject
 }
 
 func (imss *inMemorySessionStorage) PurgeOlderThan(_ context.Context, age time.Duration) {
@@ -219,7 +251,7 @@ func (imss *inMemorySessionStorage) PurgeOlderThan(_ context.Context, age time.D
 	}
 }
 
-func (imss *inMemorySessionStorage) Put(_ context.Context, session *Session) *Session {
+func (imss *inMemorySessionStorage) Put(_ context.Context, session *SessionObject) *SessionObject {
 	existingSession, found := imss.sessions[session.Id]
 	imss.sessions[session.Id] = session
 	if found {
@@ -228,13 +260,13 @@ func (imss *inMemorySessionStorage) Put(_ context.Context, session *Session) *Se
 	return nil
 }
 
-func (imss *inMemorySessionStorage) Delete(_ context.Context, sessionId string) *Session {
+func (imss *inMemorySessionStorage) Delete(_ context.Context, sessionId string) *SessionObject {
 	existingSession := imss.sessions[sessionId]
 	delete(imss.sessions, sessionId)
 	return existingSession
 }
 
-func (imss *inMemorySessionStorage) Get(_ context.Context, sessionId string) *Session {
+func (imss *inMemorySessionStorage) Get(_ context.Context, sessionId string) *SessionObject {
 	return imss.sessions[sessionId]
 }
 
@@ -387,7 +419,7 @@ func (b *sessionManagerBuilder) CookiePartitioned(partitioned bool) SessionManag
 func (b *sessionManagerBuilder) Build() SessionManager {
 	// Apply defaults for storage
 	if b.storage == nil {
-		b.storage = &inMemorySessionStorage{sessions: make(map[string]*Session)}
+		b.storage = &inMemorySessionStorage{sessions: make(map[string]*SessionObject)}
 	}
 
 	go b.purgeLoop(b.sessionPurgingInterval)

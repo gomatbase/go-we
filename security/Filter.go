@@ -390,14 +390,16 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 
 	// let's first check if there might be a user in session and if it's valid
 	var isUser bool
-	if sessionUser, isUser = scope.GetFromSession(UserAttributeName).(*User); isUser {
-		// User/Programmer may actually overwrite the user in session with some other object. If it's not a user
-		// object stored in the expected key, then we consider it invalid (unauthenticated) and remove it from the session.
-		if f.globalProviders[sessionUser.Realm] != nil && f.globalProviders[sessionUser.Realm].IsValid(sessionUser) {
-			user = sessionUser
-		} else {
-			// the user in session is not valid anymore, let's remove it
-			scope.SetInSession(UserAttributeName, nil)
+	if scope.HasSession() {
+		if sessionUser, isUser = scope.Session().Get(UserAttributeName).(*User); isUser {
+			// User/Programmer may actually overwrite the user in session with some other object. If it's not a user
+			// object stored in the expected key, then we consider it invalid (unauthenticated) and remove it from the session.
+			if f.globalProviders[sessionUser.Realm] != nil && f.globalProviders[sessionUser.Realm].IsValid(sessionUser) {
+				user = sessionUser
+			} else {
+				// the user in session is not valid anymore, let's remove it
+				scope.Session().Delete(UserAttributeName)
+			}
 		}
 	}
 
@@ -415,7 +417,9 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 				execute(trigger, user, scope)
 			}
 			// set the user in session, which, in case WE has no sessions turned on, will be lost at the end of the request.
-			scope.SetInSession(UserAttributeName, user)
+			if scope.HasSession() {
+				scope.Session().Set(UserAttributeName, user)
+			}
 		}
 
 		// If either access to the path requires an authenticated user, or an authentication attempt was made
@@ -467,8 +471,9 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 		// if an authentication was made as Anonymous, user should not be added to scope but access is authorized.
 		if user != Anonymous {
 			scope.Set(UserAttributeName, user)
-			if sessionUser != user {
-				scope.SetInSession(UserAttributeName, user)
+			// Only update session if we have one and the user didn't come from the session
+			if scope.HasSession() && user != sessionUser {
+				scope.Session().Set(UserAttributeName, user)
 			}
 			for _, trigger := range f.authenticationTriggers {
 				execute(trigger, user, scope)

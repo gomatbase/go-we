@@ -138,7 +138,7 @@ func BenchmarkHandlerWithSession(b *testing.B) {
 	builder.SessionManager(sessionManager)
 
 	builder.Handle("/test", func(w http.ResponseWriter, r we.RequestScope) error {
-		r.SetInSession("key", "value")
+		r.Session().Set("key", "value")
 		w.Write([]byte("OK"))
 		return nil
 	})
@@ -395,7 +395,7 @@ func BenchmarkCompleteStack(b *testing.B) {
 	// Handler with path variable
 	builder.Handle("/api/users/{id}", func(w http.ResponseWriter, r we.RequestScope) error {
 		userId := r.Var("id")
-		r.SetInSession("lastUserId", userId)
+		r.Session().Set("lastUserId", userId)
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"id":"` + userId + `"}`))
 		return nil

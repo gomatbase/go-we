@@ -586,12 +586,12 @@ func TestRequestScopeMethods(t *testing.T) {
 			}
 
 			// Test setting and getting in same request
-			r.SetInSession("counter", 42)
-			r.SetInSession("user", "alice")
+			r.Session().Set("counter", 42)
+			r.Session().Set("user", "alice")
 
-			counter := r.GetFromSession("counter")
-			user := r.GetFromSession("user")
-			missing := r.GetFromSession("missing")
+			counter := r.Session().Get("counter")
+			user := r.Session().Get("user")
+			missing := r.Session().Get("missing")
 
 			if counter != 42 || user != "alice" {
 				return fmt.Errorf("unexpected session attributes: counter=%v, user=%v", counter, user)

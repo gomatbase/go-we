@@ -41,7 +41,7 @@ type mockedRequestScope struct {
 	request    *http.Request
 	variables  map[string]string
 	attributes map[string]any
-	session    *we.Session
+	session    we.Session
 }
 
 func (m *mockedRequestScope) HasSession() bool {
@@ -101,18 +101,8 @@ func (m *mockedRequestScope) Set(name string, value any) {
 	m.attributes[name] = value
 }
 
-func (m *mockedRequestScope) GetFromSession(name string) any {
-	if m.session == nil {
-		return nil
-	}
-	return m.session.Attributes[name]
-}
-
-func (m *mockedRequestScope) SetInSession(name string, value any) {
-	if m.session == nil {
-		m.session = &we.Session{Attributes: make(map[string]any)}
-	}
-	m.session.Attributes[name] = value
+func (m *mockedRequestScope) Session() we.Session {
+	return m.session
 }
 
 func (m *mockedRequestScope) SetHeader(key string, value string) {
@@ -142,6 +132,7 @@ func MockedRequestScope(method, rawUrl string) RequestScopeMocker {
 	return &mockedRequestScope{
 		attributes: make(map[string]any),
 		variables:  make(map[string]string),
+		session:    &we.SessionObject{Attributes: make(map[string]any)},
 		request: &http.Request{
 			Method:           method,
 			URL:              parsedUrl,

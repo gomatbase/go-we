@@ -220,11 +220,8 @@ func (m *mockRequestScope) Get(key string) any {
 func (m *mockRequestScope) Set(key string, value any) {
 }
 
-func (m *mockRequestScope) GetFromSession(key string) any {
+func (m *mockRequestScope) Session() we.Session {
 	return nil
-}
-
-func (m *mockRequestScope) SetInSession(key string, value any) {
 }
 
 // Ensure mockRequestScope implements we.RequestScope

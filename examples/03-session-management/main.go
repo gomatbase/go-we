@@ -17,16 +17,16 @@ func home(w http.ResponseWriter, scope we.RequestScope) error {
 	visitCount := 0
 
 	// Get visit count from session (if exists)
-	if count := scope.GetFromSession("visit_count"); count != nil {
+	if count := scope.Session().Get("visit_count"); count != nil {
 		visitCount = count.(int)
 	}
 
 	// Increment and save
 	visitCount++
-	scope.SetInSession("visit_count", visitCount)
+	scope.Session().Set("visit_count", visitCount)
 
 	// Check if user is logged in
-	username := scope.GetFromSession("username")
+	username := scope.Session().Get("username")
 	isLoggedIn := username != nil
 
 	w.Header().Set("Content-Type", "text/html")
@@ -87,8 +87,8 @@ func login(w http.ResponseWriter, scope we.RequestScope) error {
 	username := scope.Request().FormValue("username")
 
 	// Store username in session
-	scope.SetInSession("username", username)
-	scope.SetInSession("login_time", time.Now().Format(time.RFC1123))
+	scope.Session().Set("username", username)
+	scope.Session().Set("login_time", time.Now().Format(time.RFC1123))
 
 	http.Redirect(w, scope.Request(), "/", http.StatusSeeOther)
 	return nil
@@ -97,14 +97,14 @@ func login(w http.ResponseWriter, scope we.RequestScope) error {
 // profile handler displays the user's profile information. It checks if the user is logged in by looking for the
 // username in the session.
 func profile(w http.ResponseWriter, scope we.RequestScope) error {
-	username := scope.GetFromSession("username")
+	username := scope.Session().Get("username")
 	if username == nil {
 		http.Redirect(w, scope.Request(), "/login", http.StatusSeeOther)
 		return nil
 	}
 
-	loginTime := scope.GetFromSession("login_time")
-	visitCount := scope.GetFromSession("visit_count")
+	loginTime := scope.Session().Get("login_time")
+	visitCount := scope.Session().Get("visit_count")
 
 	w.Header().Set("Content-Type", "text/html")
 	html := fmt.Sprintf(`
@@ -123,8 +123,8 @@ func profile(w http.ResponseWriter, scope we.RequestScope) error {
 // user back to the home page.
 func logout(w http.ResponseWriter, scope we.RequestScope) error {
 	// Remove user-related session data
-	scope.SetInSession("username", nil)
-	scope.SetInSession("login_time", nil)
+	scope.Session().Delete("username")
+	scope.Session().Delete("login_time")
 
 	http.Redirect(w, scope.Request(), "/", http.StatusSeeOther)
 	return nil
@@ -157,7 +157,7 @@ func setPreference(w http.ResponseWriter, scope we.RequestScope) error {
 	scope.Request().ParseForm()
 	theme := scope.Request().FormValue("theme")
 
-	scope.SetInSession("theme", theme)
+	scope.Session().Set("theme", theme)
 
 	http.Redirect(w, scope.Request(), "/view-preference", http.StatusSeeOther)
 	return nil
@@ -166,7 +166,7 @@ func setPreference(w http.ResponseWriter, scope we.RequestScope) error {
 // viewPreference handler displays the user's saved theme preference. It retrieves the theme from the session and shows it
 // on the page. If no preference is set, it informs the user that no theme preference is set.
 func viewPreference(w http.ResponseWriter, scope we.RequestScope) error {
-	theme := scope.GetFromSession("theme")
+	theme := scope.Session().Get("theme")
 
 	w.Header().Set("Content-Type", "text/html")
 
@@ -192,10 +192,10 @@ func viewPreference(w http.ResponseWriter, scope we.RequestScope) error {
 // from the session, allowing the session to persist while clearing user-specific data. This is useful for scenarios like
 // logging out or resetting preferences without losing the session context (like visit count).
 func clearSession(w http.ResponseWriter, scope we.RequestScope) error {
-	// Note: Setting values to nil removes them from the session
-	scope.SetInSession("username", nil)
-	scope.SetInSession("login_time", nil)
-	scope.SetInSession("theme", nil)
+	// Remove specific session attributes
+	scope.Session().Delete("username")
+	scope.Session().Delete("login_time")
+	scope.Session().Delete("theme")
 	// visit_count is kept to show that sessions persist even after clearing data
 
 	w.Header().Set("Content-Type", "text/html")

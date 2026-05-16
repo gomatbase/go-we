@@ -275,7 +275,7 @@ func admin(w http.ResponseWriter, scope we.RequestScope) error {
 }
 
 func logout(w http.ResponseWriter, scope we.RequestScope) error {
-	scope.SetInSession(security.UserAttributeName, nil)
+	scope.Session().Delete(security.UserAttributeName)
 	return events.FoundRedirect.WithAttribute("/")
 }
 

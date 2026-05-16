@@ -46,10 +46,8 @@ type RequestScope interface {
 	Get(string) any
 	// Set sets an attribute in the request scope
 	Set(string, any)
-	// GetFromSession returns the value of an attribute set in the session. Returns nil if sessions are not enabled
-	GetFromSession(string) any
-	// SetInSession sets an attribute in the session. Does nothing if sessions are not enabled
-	SetInSession(string, any)
+	// Session returns the the associated session object if sessions are enabled. Nil if sessions are not enabled.
+	Session() Session
 	// HasSession returns true if sessions are enabled
 	HasSession() bool
 }
@@ -63,7 +61,7 @@ type requestScope struct {
 	// path variables extracted from the request
 	variables map[string]string
 	// session object if sessions are enabled
-	session *Session
+	session Session
 }
 
 // HasSession checks if sessions are active
@@ -131,19 +129,9 @@ func (rs *requestScope) Set(key string, value any) {
 	rs.attributes[key] = value
 }
 
-// GetFromSession returns the value of an attribute set in the session
-func (rs *requestScope) GetFromSession(key string) any {
-	if rs.session != nil {
-		return rs.session.Attributes[key]
-	}
-	return nil
-}
-
-// SetInSession sets an attribute in the session
-func (rs *requestScope) SetInSession(key string, value any) {
-	if rs.session != nil {
-		rs.session.Attributes[key] = value
-	}
+// Session returns the session interface for managing session attributes
+func (rs *requestScope) Session() Session {
+	return rs.session
 }
 
 // updateEndpoint updates the query in the request path. Used to handle redirections with updated queries.

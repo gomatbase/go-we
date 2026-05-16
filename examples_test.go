@@ -116,15 +116,15 @@ func Example_sessions() {
 	builder.SessionManager(sessionManager)
 
 	builder.Handle("/login", func(w http.ResponseWriter, r we.RequestScope) error {
-		r.SetInSession("username", "john")
-		r.SetInSession("role", "admin")
+		r.Session().Set("username", "john")
+		r.Session().Set("role", "admin")
 		_, _ = fmt.Fprintln(w, "Logged in")
 		return nil
 	})
 
 	builder.Handle("/profile", func(w http.ResponseWriter, r we.RequestScope) error {
-		username := r.GetFromSession("username")
-		role := r.GetFromSession("role")
+		username := r.Session().Get("username")
+		role := r.Session().Get("role")
 		_, _ = fmt.Fprintf(w, "User: %v, Role: %v", username, role)
 		return nil
 	})

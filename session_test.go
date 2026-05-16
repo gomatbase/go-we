@@ -145,8 +145,9 @@ func TestSessionCookieAttributes(t *testing.T) {
 				t.Fatal("Expected session to be created")
 			}
 
-			if session.Status != SessionStatusNew {
-				t.Errorf("Expected new session, got status %d", session.Status)
+			sessionObj := session.(*SessionObject)
+			if sessionObj.Status != SessionStatusNew {
+				t.Errorf("Expected new session, got status %d", sessionObj.Status)
 			}
 
 			// Get the Set-Cookie header
@@ -213,9 +214,10 @@ func TestSessionCookieAttributesExistingSession(t *testing.T) {
 	req1 := httptest.NewRequest("GET", "/app/test", nil)
 	w1 := httptest.NewRecorder()
 	session1 := sessionManager.GetHttpSession(w1, req1)
+	sessionObj1 := session1.(*SessionObject)
 
-	if session1.Status != SessionStatusNew {
-		t.Fatalf("Expected new session, got status %d", session1.Status)
+	if sessionObj1.Status != SessionStatusNew {
+		t.Fatalf("Expected new session, got status %d", sessionObj1.Status)
 	}
 
 	// Get the session ID from cookie
@@ -235,13 +237,14 @@ func TestSessionCookieAttributesExistingSession(t *testing.T) {
 
 	// Get existing session (should not set cookie again)
 	session2 := sessionManager.GetHttpSession(w2, req2)
+	sessionObj2 := session2.(*SessionObject)
 
-	if session2.Status != SessionStatusExisting {
-		t.Errorf("Expected existing session, got status %d", session2.Status)
+	if sessionObj2.Status != SessionStatusExisting {
+		t.Errorf("Expected existing session, got status %d", sessionObj2.Status)
 	}
 
-	if session2.Id != session1.Id {
-		t.Errorf("Session ID mismatch: got %q, want %q", session2.Id, session1.Id)
+	if sessionObj2.Id != sessionObj1.Id {
+		t.Errorf("Session ID mismatch: got %q, want %q", sessionObj2.Id, sessionObj1.Id)
 	}
 
 	// Verify no new cookie was set for existing session
@@ -326,7 +329,8 @@ func TestSessionStorage(t *testing.T) {
 
 		// Create session
 		session := manager.GetHttpSession(w, req)
-		sessionId := session.Id
+		sessionObj := session.(*SessionObject)
+		sessionId := sessionObj.Id
 
 		// Verify session exists
 		if manager.storage.Get(nil, sessionId) == nil {
@@ -352,7 +356,7 @@ func TestSessionStorage(t *testing.T) {
 		manager := DefaultSessionManager().Build().(*sessionManager)
 
 		// Create initial session
-		session1 := &Session{
+		session1 := &SessionObject{
 			Id:         "test-session-1",
 			LastUse:    time.Now(),
 			Attributes: map[string]interface{}{"key": "value1"},
@@ -360,7 +364,7 @@ func TestSessionStorage(t *testing.T) {
 		manager.storage.Put(nil, session1)
 
 		// Put new session with same ID
-		session2 := &Session{
+		session2 := &SessionObject{
 			Id:         "test-session-1",
 			LastUse:    time.Now(),
 			Attributes: map[string]interface{}{"key": "value2"},
@@ -388,7 +392,7 @@ func TestSessionStorage(t *testing.T) {
 			Build().(*sessionManager)
 
 		// Create old session
-		oldSession := &Session{
+		oldSession := &SessionObject{
 			Id:         "old-session",
 			LastUse:    time.Now().Add(-200 * time.Millisecond),
 			Attributes: map[string]interface{}{},
@@ -396,7 +400,7 @@ func TestSessionStorage(t *testing.T) {
 		manager.storage.Put(nil, oldSession)
 
 		// Create recent session
-		recentSession := &Session{
+		recentSession := &SessionObject{
 			Id:         "recent-session",
 			LastUse:    time.Now(),
 			Attributes: map[string]interface{}{},
@@ -419,7 +423,7 @@ func TestSessionStorage(t *testing.T) {
 
 	t.Run("Storage getter returns configured storage", func(t *testing.T) {
 		customStorage := &inMemorySessionStorage{
-			sessions: make(map[string]*Session),
+			sessions: make(map[string]*SessionObject),
 		}
 
 		manager := DefaultSessionManager().
@@ -486,7 +490,7 @@ func TestSessionPurgeLoop(t *testing.T) {
 			Build().(*sessionManager)
 
 		// Create an old session
-		oldSession := &Session{
+		oldSession := &SessionObject{
 			Id:         "old-test-session",
 			LastUse:    time.Now().Add(-100 * time.Millisecond),
 			Attributes: map[string]interface{}{},
