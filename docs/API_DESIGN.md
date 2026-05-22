@@ -20,13 +20,15 @@ go-we implements `http.Handler` and works seamlessly with `net/http`. This means
 
 ```go
 // Can be used with standard http.Server
+engine := we.New().Build()
 server := &http.Server{
     Addr:    ":8080",
-    Handler: engine.Handler(),
+    Handler: engine,
 }
 server.ListenAndServe()
 
 // Or use go-we's convenience methods
+engine := we.New().Build()
 engine.Listen(":8080")
 ```
 
@@ -89,16 +91,20 @@ const (
 
 ```go
 // Explicit filter ordering
-engine.AddFilter(corsFilter)       // Runs first
-engine.AddFilter(securityFilter)   // Runs second
-engine.AddFilter(loggingFilter)    // Runs third
+builder := we.New().
+    Filter(corsFilter)       // Runs first
+    Filter(securityFilter)   // Runs second
+    Filter(loggingFilter)    // Runs third
 
 // Explicit method routing
-engine.HandleMethod("GET", "/users", listUsers)
-engine.HandleMethod("POST", "/users", createUser)
+builder.HandleMethod("GET", "/users", listUsers)
+    HandleMethod("POST", "/users", createUser)
 
 // Explicit session configuration
-engine.SetSessionManager(we.DefaultSessionManager(config))
+builder.SessionManager(we.DefaultSessionManager().Build())
+
+// Build the engine
+engine := builder.Build()
 ```
 
 **Rationale**:
@@ -138,11 +144,73 @@ func (s *PostgresSessionStorage) Get(ctx context.Context, id string) *Session {
 }
 
 // Plug it in
-sessionManager := we.DefaultSessionManager(config)
-sessionManager.SetStorage(&PostgresSessionStorage{db: db})
+sessionManager := we.DefaultSessionManager().
+    Storage(&PostgresSessionStorage{db: db}).
+    Build()
+
+engine := we.New().
+    SessionManager(sessionManager).
+    Build()
 ```
 
 ## Core API Decisions
+
+### Why Builder Pattern for Engine Creation
+
+**Decision**: Use builder pattern to create and configure the engine.
+
+```go
+engine := we.New().
+    Handle("/", homeHandler).
+    HandleMethod("GET", "/users", listUsers).
+    HandleMethod("POST", "/users", createUser).
+    Filter(corsFilter).
+    Filter(securityFilter).
+    SessionManager(sessionManager).
+    ErrorHandler(customErrorHandler).
+    ReadHeaderTimeout(15 * time.Second).
+    Build()
+```
+
+**Rationale**:
+1. **Fluent API** - Configuration reads naturally from top to bottom
+2. **Type safety** - Builder methods enforce correct types and prevent invalid configurations
+3. **Discoverability** - IDE autocomplete shows all available options
+4. **Immutability** - Built engine is immutable and thread-safe
+5. **Validation** - Can validate configuration at build time
+6. **Flexibility** - Easy to add new configuration options without breaking changes
+7. **Clarity** - Clear separation between configuration (builder) and runtime (engine)
+
+**Alternative considered**: Direct struct initialization or setter methods
+- **Rejected because**: 
+  - Struct initialization requires exposing internal fields
+  - Setter methods on engine would allow mutation after creation
+  - No validation until first use
+  - Less discoverable than builder pattern
+
+**Example of builder benefits**:
+```go
+// Clear, fluent configuration
+engine := we.New().
+    Handle("/health", healthCheck).
+    Filter(loggingFilter).
+    SessionManager(we.DefaultSessionManager().
+        SessionTimeout(2 * time.Hour).
+        CookieSecure(true).
+        Build()).
+    Build()
+
+// Engine is now immutable and ready to use
+engine.Listen(":8080")
+```
+
+**Build-time validation**:
+```go
+// The builder can validate at build time
+engine := we.New().
+    ReadTimeout(-5 * time.Second). // PANIC: negative timeout not allowed
+    Build()
+```
 
 ### Why HandlerFunction Returns Error
 
@@ -201,15 +269,13 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 // With RequestScope (easier to test)
 func handler(w http.ResponseWriter, scope we.RequestScope) error {
     id := scope.Var("id")
-    user := scope.GetFromSession("user")
+    user := scope.Session().Get("user")
     // ...
 }
 
 // Mock in tests
-mocker := test.RequestScopeMocker{
-    Variables: map[string]string{"id": "123"},
-}
-handler(w, mocker.Mock())
+scope := test.MockedRequestScope("GET", "http://localhost:8080/users/123")
+handler(w, scope)
 ```
 
 ### Why Event-Driven Error Handling
@@ -272,19 +338,27 @@ if needsLogin {
 **Example**:
 ```go
 // Different handlers, same path
-engine.HandleMethod("GET", "/users/{id}", getUser)
-engine.HandleMethod("PUT", "/users/{id}", updateUser)
-engine.HandleMethod("DELETE", "/users/{id}", deleteUser)
-
-// Fallback for all methods
-engine.Handle("/health", healthCheck)
+engine := we.New().
+    HandleMethod("GET", "/users/{id}", getUser).
+    HandleMethod("PUT", "/users/{id}", updateUser).
+    HandleMethod("DELETE", "/users/{id}", deleteUser).
+    Handle("/health", healthCheck). // Fallback for all methods
+    Build()
 ```
 
 ### Why Builder Pattern for Configuration
 
-**Decision**: Use fluent builder APIs for complex configuration.
+**Decision**: Use fluent builder APIs for complex configuration (engine, filters, session manager, security).
 
 ```go
+// Engine builder
+engine := we.New().
+    Handle("/", homeHandler).
+    Filter(corsFilter).
+    SessionManager(sessionManager).
+    Build()
+
+// CORS filter builder
 corsFilter := filters.Cors().
     AllowedOrigins("https://example.com").
     AllowedMethods("GET", "POST").
@@ -292,6 +366,13 @@ corsFilter := filters.Cors().
     Path("/api/public/**").
         AllowedOrigins("*").
         Add().
+    Build()
+
+// Session manager builder
+sessionManager := we.DefaultSessionManager().
+    SessionTimeout(2 * time.Hour).
+    CookieSecure(true).
+    CookieSameSite(http.SameSiteStrictMode).
     Build()
 ```
 
@@ -402,7 +483,9 @@ func makeUserHandler(db *sql.DB, logger *log.Logger) we.HandlerFunction {
 }
 
 // Use it
-engine.Handle("/users/{id}", makeUserHandler(db, logger))
+engine := we.New().
+    Handle("/users/{id}", makeUserHandler(db, logger)).
+    Build()
 ```
 
 ### Trade-off: No Automatic Parameter Binding
@@ -469,7 +552,7 @@ var templates = template.Must(template.ParseGlob("templates/*.html"))
 
 func pageHandler(w http.ResponseWriter, scope we.RequestScope) error {
     data := map[string]interface{}{
-        "User": scope.GetFromSession("user"),
+        "User": scope.Session().Get("user"),
     }
     return templates.ExecuteTemplate(w, "page.html", data)
 }
@@ -486,7 +569,9 @@ func pageHandler(w http.ResponseWriter, scope we.RequestScope) error {
 
 **How to enable**:
 ```go
-engine.SetSessionManager(we.DefaultSessionManager(config))
+engine := we.New().
+    SessionManager(we.DefaultSessionManager().Build()).
+    Build()
 ```
 
 ## Evolution and Stability
