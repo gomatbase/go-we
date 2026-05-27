@@ -62,6 +62,17 @@ type requestScope struct {
 	variables map[string]string
 	// session object if sessions are enabled
 	session Session
+	// timestamp when the request scope was created
+	timestamp time.Time
+}
+
+// newScope creates a new RequestScope for the given HTTP request
+func newScope(r *http.Request) *requestScope {
+	return &requestScope{
+		request:    r,
+		attributes: make(map[string]any),
+		timestamp:  time.Now(),
+	}
 }
 
 // HasSession checks if sessions are active
@@ -339,10 +350,7 @@ func (wc *engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// request context is always created fresh for an incoming request
-	scope := &requestScope{
-		request:    r,
-		attributes: make(map[string]any),
-	}
+	scope := newScope(r)
 	if wc.sessionManager != nil {
 		scope.session = wc.sessionManager.GetHttpSession(w, r)
 	}
