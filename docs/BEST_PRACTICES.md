@@ -41,14 +41,19 @@ securityFilter := security.Filter(true). // restrictedByDefault
 
 ```go
 // BAD - No authentication
-engine.Handle("/api/delete-user", deleteUser)
+engine := we.New().
+    Handle("/api/delete-user", deleteUser).
+    Build()
 
 // GOOD - Require authentication and authorization
-securityFilter := security.Filter(true).
-    Authentication(authProvider).
-    Path("/api/delete-user").
-        Authorize(security.Scope("admin")).
-        Add().
+engine := we.New().
+    Filter(security.Filter(true).
+        Authentication(authProvider).
+        Path("/api/delete-user").
+            Authorize(security.Scope("admin")).
+            Add().
+        Build()).
+    Handle("/api/delete-user", deleteUser).
     Build()
 ```
 
@@ -57,12 +62,12 @@ securityFilter := security.Filter(true).
 When supporting multiple authentication methods, use realms to isolate them:
 
 ```go
-apiKeyProvider := security.BearerAuthentication().
+apiKeyProvider := security.BearerAuthenticationProvider().
     Realm("api").
     TokenIntrospector(apiKeyIntrospector).
     Build()
 
-sessionProvider := security.FormAuthentication().
+sessionProvider := security.LoginFormAuthenticationProvider().
     Realm("web").
     CredentialsProvider(credProvider).
     Build()
@@ -237,10 +242,10 @@ log.Printf("User login attempt: %s", username)
 
 ```go
 // BAD - Storing password in session
-scope.SetInSession("password", password)
+scope.Session().Set("password", password)
 
 // GOOD - Store only user identifier
-scope.SetInSession("user_id", userID)
+scope.Session().Set("user_id", userID)
 ```
 
 #### Use Secure Random for Tokens
@@ -359,8 +364,9 @@ func (h *apiErrorHandler) HandleError(w we.ResponseWriter, err error, scope we.R
 }
 
 // Use it
-engine := we.New()
-engine.SetErrorHandler(&apiErrorHandler{})
+engine := we.New().
+    ErrorHandler(&apiErrorHandler{}).
+    Build()
 ```
 
 #### Log Errors Appropriately
@@ -424,10 +430,11 @@ func handler(w http.ResponseWriter, scope we.RequestScope) error {
 
 ```go
 // GOOD - Register all routes during initialization
-engine := we.New()
-engine.Handle("/users", listUsers)
-engine.Handle("/users/{id}", getUser)
-engine.HandleMethod("POST", "/users", createUser)
+engine := we.New().
+    Handle("/users", listUsers).
+    Handle("/users/{id}", getUser).
+    Handle("POST", "/users", createUser).
+    Build()
 
 // Start server (path trees are now immutable)
 engine.Listen(":8080")
@@ -441,13 +448,19 @@ Path trees are read-only after setup and thread-safe for concurrent requests.
 
 ```go
 // BETTER - Exact match (fastest)
-engine.Handle("/api/health", healthCheck)
+engine := we.New().
+    Handle("/api/health", healthCheck).
+    Build()
 
 // SLOWER - Variable match
-engine.Handle("/api/{resource}", genericHandler)
+engine := we.New().
+    Handle("/api/{resource}", genericHandler).
+    Build()
 
 // SLOWEST - Wildcard match
-engine.Handle("/api/**", catchAll)
+engine := we.New().
+    Handle("/api/**", catchAll).
+    Build()
 ```
 
 Precedence also affects performance:
@@ -461,7 +474,9 @@ Precedence also affects performance:
 
 ```go
 // Development/Single Instance - In-Memory (default)
-engine.SetSessionManager(we.DefaultSessionManager(config))
+engine := we.New().
+    SessionManager(we.DefaultSessionManager(config)).
+    Build()
 
 // Production/Multi-Instance - External Storage
 type RedisSessionStorage struct {
@@ -479,36 +494,38 @@ func (s *RedisSessionStorage) Put(ctx context.Context, session *we.Session) *we.
 // Use custom storage
 sessionManager := we.DefaultSessionManager(config)
 sessionManager.SetStorage(&RedisSessionStorage{client: redisClient})
-engine.SetSessionManager(sessionManager)
+engine := we.New().
+    SessionManager(sessionManager).
+    Build()
 ```
 
 #### Configure Session Timeouts Appropriately
 
 ```go
 // Short timeout for sensitive operations (banking, admin)
-config := we.SessionManagerConfiguration{
-    SessionTimeout: 15 * time.Minute,
-    StaticSessionLifespan: true, // Absolute timeout
-}
+sessionManager := we.DefaultSessionManager().
+    SessionTimeout(15 * time.Minute).
+    StaticSessionLifespan(true). // Absolute timeout
+    Build()
 
 // Longer timeout for general apps
-config := we.SessionManagerConfiguration{
-    SessionTimeout: 24 * time.Hour,
-    StaticSessionLifespan: false, // Rolling timeout (activity-based)
-}
+sessionManager := we.DefaultSessionManager().
+    SessionTimeout(24 * time.Hour).
+    StaticSessionLifespan(false). // Rolling timeout (activity-based)
+    Build()
 ```
 
 #### Don't Store Large Objects in Sessions
 
 ```go
 // BAD - Large objects in session
-scope.SetInSession("user_profile", largeUserObject) // Stored in memory/storage
+scope.Session().Set("user_profile", largeUserObject) // Stored in memory/storage
 
 // GOOD - Store only identifier, fetch when needed
-scope.SetInSession("user_id", userID)
+scope.Session().Set("user_id", userID)
 
 // Later, fetch from database
-userId := scope.GetFromSession("user_id")
+userId := scope.Session().Get("user_id")
 user := userRepository.FindById(userId)
 ```
 
@@ -575,10 +592,12 @@ func (f *myFilter) Filter(headers http.Header, scope we.RequestScope) error {
 
 ```go
 // GOOD - Fast rejections first
-engine.AddFilter(rateLimitFilter)    // Rejects quickly if over limit
-engine.AddFilter(corsFilter)          // Fast header checks
-engine.AddFilter(securityFilter)      // May authenticate (slower)
-engine.AddFilter(loggingFilter)       // Runs on successful requests
+engine := we.New().
+    Filter(rateLimitFilter).    // Rejects quickly if over limit
+    Filter(corsFilter).          // Fast header checks
+    Filter(securityFilter).      // May authenticate (slower)
+    Filter(loggingFilter).       // Runs on successful requests
+    Build()
 ```
 
 ## Session Management
@@ -593,7 +612,7 @@ func profileHandler(w http.ResponseWriter, scope we.RequestScope) error {
         return events.InternalServerError // Sessions not configured
     }
     
-    userId := scope.GetFromSession("user_id")
+    userId := scope.Session().Get("user_id")
     if userId == nil {
         return events.UnauthorizedError
     }
@@ -611,11 +630,11 @@ func trackVisits(w http.ResponseWriter, scope we.RequestScope) error {
         
         if session.Status == we.SessionStatusNew {
             // First visit
-            scope.SetInSession("visit_count", 1)
+            scope.Session().Set("visit_count", 1)
         } else {
             // Returning visitor
-            count := scope.GetFromSession("visit_count").(int)
-            scope.SetInSession("visit_count", count+1)
+            count := scope.Session().Get("visit_count").(int)
+            scope.Session().Set("visit_count", count+1)
         }
     }
     
@@ -640,8 +659,8 @@ func login(w http.ResponseWriter, scope we.RequestScope) error {
     // Consider using session storage with custom invalidation
     
     // Set new session data
-    scope.SetInSession("user_id", user.ID)
-    scope.SetInSession("login_time", time.Now())
+    scope.Session().Set("user_id", user.ID)
+    scope.Session().Set("login_time", time.Now())
     
     return nil
 }
@@ -656,8 +675,8 @@ func login(w http.ResponseWriter, scope we.RequestScope) error {
 func logout(w http.ResponseWriter, scope we.RequestScope) error {
     if scope.HasSession() {
         // Clear sensitive data
-        scope.SetInSession("user_id", nil)
-        scope.SetInSession("auth_token", nil)
+        scope.Session().Set("user_id", nil)
+        scope.Session().Set("auth_token", nil)
         // Clear other session attributes as needed
     }
     
@@ -668,16 +687,15 @@ func logout(w http.ResponseWriter, scope we.RequestScope) error {
 #### Set Secure Cookie Flags
 
 ```go
-config := we.SessionManagerConfiguration{
-    SessionTimeout: time.Hour,
-    CookieName: "session",
-    // Cookie security configuration
-    CookiePath: "/",
-    CookieDomain: "example.com",
+sessionManager := we.DefaultSessionManager().
+    SessionTimeout(time.Hour).
+    CookieName("session").
+    CookiePath("/").
+    CookieDomain("example.com").
     // CookieHttpOnly defaults to true for security
-    CookieSecure: true, // HTTPS only (recommended for production)
-    CookieSameSite: http.SameSiteStrictMode, // CSRF protection
-}
+    CookieSecure(true). // HTTPS only (recommended for production)
+    CookieSameSite(http.SameSiteStrictMode). // CSRF protection
+    Build()
 ```
 
 ## Filter Configuration
@@ -686,14 +704,18 @@ config := we.SessionManagerConfiguration{
 
 ```go
 // CORRECT ORDER
-engine.AddFilter(corsFilter)         // 1. CORS (early reject)
-engine.AddFilter(securityFilter)     // 2. Authentication
-engine.AddFilter(loggingFilter)      // 3. Logging (after auth)
-engine.AddFilter(headersFilter)      // 4. Security headers
+engine := we.New().
+    Filter(corsFilter).         // 1. CORS (early reject)
+    Filter(securityFilter).     // 2. Authentication
+    Filter(loggingFilter).      // 3. Logging (after auth)
+    Filter(headersFilter).      // 4. Security headers
+    Build()
 
 // WRONG ORDER - Don't do this
-engine.AddFilter(securityFilter)     // Auth before CORS = CORS won't work
-engine.AddFilter(corsFilter)
+engine = we.New().
+    Filter(securityFilter).     // Auth before CORS = CORS won't work
+    Filter(corsFilter).
+    Build()
 ```
 
 Recommended order:
@@ -727,10 +749,12 @@ securityFilter := security.Filter(true).
 ### Graceful Shutdown
 
 ```go
-var shutdown func(time.Duration) error
+engine := we.New().
+    Handle("GET", "/api/health", healthCheck).
+    Build()
 
-engine := we.New()
-engine.HookGraciousShutdownFunction(&shutdown)
+// Start server in background
+go engine.Listen(":8080")
 
 // Handle OS signals
 sigChan := make(chan os.Signal, 1)
@@ -741,9 +765,10 @@ go func() {
     log.Println("Shutting down gracefully...")
     
     // Give handlers 30 seconds to complete
-    if err := shutdown(30 * time.Second); err != nil {
+    if err := engine.GraciouslyShutdown(30 * time.Second); err != nil {
         log.Printf("Shutdown error: %v", err)
     }
+
     
     os.Exit(0)
 }()
@@ -770,18 +795,20 @@ engine.ListenWithTlsOptions(":8443", tlsConfig)
 ### Health Checks
 
 ```go
-engine.Handle("/health", func(w http.ResponseWriter, scope we.RequestScope) error {
-    // Check dependencies
-    if err := database.Ping(); err != nil {
-        w.WriteHeader(503)
-        w.Write([]byte("Database unavailable"))
+engine := we.New().
+    Handle("/health", func(w http.ResponseWriter, scope we.RequestScope) error {
+        // Check dependencies
+        if err := database.Ping(); err != nil {
+            w.WriteHeader(503)
+            w.Write([]byte("Database unavailable"))
+            return nil
+        }
+        
+        w.WriteHeader(200)
+        w.Write([]byte("OK"))
         return nil
-    }
-    
-    w.WriteHeader(200)
-    w.Write([]byte("OK"))
-    return nil
-})
+    }).
+    Build()
 ```
 
 ## Testing Guidelines
@@ -838,11 +865,12 @@ func TestUserHandler_NotFound(t *testing.T) {
 
 ```go
 func TestAPIIntegration(t *testing.T) {
-    engine := we.New()
-    engine.Handle("/api/users/{id}", getUserHandler)
+    engine := we.New().
+        Handle("/api/users/{id}", getUserHandler).
+        Build()
     
     // Create test server
-    server := httptest.NewServer(engine.Handler())
+    server := httptest.NewServer(engine)
     defer server.Close()
     
     // Make request

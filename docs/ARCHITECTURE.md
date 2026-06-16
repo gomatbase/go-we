@@ -667,15 +667,15 @@ type WeEvent interface {
     StatusCode() int                        // HTTP status
     Payload() *Payload                      // Response body
     WithPayload(string, []byte) WeEvent    // Add payload
-    WithAttribute(any) WeEvent             // Add metadata
-    Attribute() any                         // Get metadata
+    WithAttribute(string) WeEvent           // Add metadata
+    Attribute() string                      // Get metadata
 }
 ```
 
 ### Standard Events
 
 **Success/Redirects:**
-- `Continue` - Explicit continue (no-op)
+- `Continue` - Interrupt filter chain and jump to handler execution
 - `OKInterruption` - Early success (200)
 - `MovedPermanentlyRedirect` (301)
 - `FoundRedirect` (302)
@@ -688,12 +688,9 @@ type WeEvent interface {
 - `ForbiddenError` (403)
 - `NotFoundError` (404)
 - `MethodNotAllowedError` (405)
-- `ConflictError` (409)
 
 **Server Errors (5xx):**
 - `InternalServerError` (500)
-- `NotImplementedError` (501)
-- `ServiceUnavailableError` (503)
 
 ### Event Immutability
 
@@ -716,7 +713,7 @@ Implement `ErrorHandler` for custom error responses:
 
 ```go
 type ErrorHandler interface {
-    HandleError(error, http.ResponseWriter, RequestScope)
+    HandleError(http.ResponseWriter, error, RequestScope)
 }
 ```
 

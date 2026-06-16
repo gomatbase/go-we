@@ -44,16 +44,19 @@ engine.Listen(":8080")
 
 **Principle**: Keep external dependencies to an absolute minimum.
 
-go-we has **zero external dependencies** outside the Go standard library.
+go-we uses only essential external dependencies:
+- `github.com/golang-jwt/jwt/v5` - JWT token signing/verification
+- `github.com/google/uuid` - UUID generation
+- `golang.org/x/oauth2` - OAuth2/OIDC authentication
+- `github.com/gomatbase/csn` - Internal error handling
 
 **Rationale**:
-- Reduces security surface area
-- Faster compilation
-- No dependency version conflicts
+- Keeps security surface area manageable
+- Reduces dependency version conflicts
 - Easier auditing and compliance
-- Smaller binary sizes
+- Core features implemented without external libraries (path tree, event system)
 
-**Trade-off**: We implement some features ourselves (path tree, event system) rather than importing libraries. This means more maintenance but gives us full control and no external dependencies.
+**Trade-off**: We implement some features ourselves (path tree, event system) rather than importing libraries. This means more maintenance but gives us full control.
 
 ### 3. Type Safety Over Reflection
 
@@ -501,8 +504,8 @@ engine := we.New().
 
 ```go
 // We provide utility functions
-var req CreateUserRequest
-if err := util.ReadJsonBody(scope.Request(), &req); err != nil {
+req, err := util.ReadJsonBody[CreateUserRequest](scope)
+if err != nil {
     return events.BadRequestError
 }
 ```
@@ -524,10 +527,12 @@ import "github.com/go-playground/validator/v10"
 var validate = validator.New()
 
 func createUser(w http.ResponseWriter, scope we.RequestScope) error {
-    var req CreateUserRequest
-    util.ReadJsonBody(scope.Request(), &req)
+    req, err := util.ReadJsonBody[CreateUserRequest](scope)
+    if err != nil {
+        return events.BadRequestError
+    }
     
-    if err := validate.Struct(&req); err != nil {
+    if err := validate.Struct(req); err != nil {
         return events.BadRequestError
     }
     // ...
