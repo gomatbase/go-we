@@ -96,9 +96,13 @@ func HandleFlowEvent(w http.ResponseWriter, e error) (bool, EventFlowCategory, W
 		category := event.Category()
 		switch category {
 		case Interruption:
-			w.Header().Set("Content-type", event.Payload().ContentTypeHint)
-			w.WriteHeader(event.StatusCode())
-			w.Write(event.Payload().Content)
+			if payload := event.Payload(); payload != nil {
+				w.Header().Set("Content-type", payload.ContentTypeHint)
+				w.WriteHeader(event.StatusCode())
+				w.Write(payload.Content)
+			} else {
+				w.WriteHeader(event.StatusCode())
+			}
 		case Redirection:
 			w.Header().Set("Location", event.Attribute())
 			w.WriteHeader(event.StatusCode())
