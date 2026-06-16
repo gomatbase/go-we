@@ -273,6 +273,7 @@ func (oipb *openIdIdentityProviderBuilder) Build() BearerAndSsoProvider {
 
 	response, openIdConfigurationError := client.Do(request)
 	if openIdConfigurationError == nil {
+		defer response.Body.Close()
 		if response.StatusCode != http.StatusOK {
 			openIdConfigurationError = errors.New("unexpected response for open id configuration endpoint")
 		} else {
@@ -412,6 +413,7 @@ func (oip *openIdIdentityProvider) ValidateAuthorizationCode(ctx context.Context
 	if e != nil {
 		return nil, e
 	}
+	defer response.Body.Close()
 	body, e := io.ReadAll(response.Body)
 	tokenResponse := &TokenResponse{}
 	if e = json.Unmarshal(body, tokenResponse); e != nil {
@@ -508,6 +510,7 @@ func (oip *openIdIdentityProvider) Introspect(ctx context.Context, token string)
 	if e != nil {
 		return nil, e
 	}
+	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return nil, errors.New("invalid response from introspection endpoint")
 	}
@@ -575,11 +578,16 @@ func (oip *openIdIdentityProvider) refreshJwks(ctx context.Context) error {
 	jwks := &JwKeys{}
 	// at this stage the url was validated, no need to check for errors
 	request, _ := http.NewRequestWithContext(ctx, "GET", oip.openIdConfiguration.JwksUri, nil)
-	if response, e := oip.httpClient.Do(request); e != nil {
+	response, e := oip.httpClient.Do(request)
+	if e != nil {
 		return FailedToRefreshJwks.WithValues(e)
-	} else if response.StatusCode != http.StatusOK {
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
 		return FailedToRefreshJwks.WithValues(response.StatusCode)
-	} else if e = json.NewDecoder(response.Body).Decode(jwks); e != nil {
+	}
+	if e = json.NewDecoder(response.Body).Decode(jwks); e != nil {
 		return e
 	}
 
