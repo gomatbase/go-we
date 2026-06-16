@@ -8,7 +8,7 @@
 // It currently supports Basic authentication, bearer tokens, login forms and SSO (with OAuth2).
 //
 // Usage is simplified resorting to builders to configure the security filter which can then be added to a go-we
-// engine using we.New().AddFilter(security.New().Build()).
+// engine using we.New().Filter(security.Filter(true).Build()).Build().
 //
 // See examples for concrete usage.
 package security

@@ -483,11 +483,11 @@ type RedisSessionStorage struct {
     client *redis.Client
 }
 
-func (s *RedisSessionStorage) Get(ctx context.Context, id string) *we.Session {
+func (s *RedisSessionStorage) Get(ctx context.Context, id string) *we.SessionObject {
     // Fetch from Redis
 }
 
-func (s *RedisSessionStorage) Put(ctx context.Context, session *we.Session) *we.Session {
+func (s *RedisSessionStorage) Put(ctx context.Context, session *we.SessionObject) *we.SessionObject {
     // Store in Redis
 }
 

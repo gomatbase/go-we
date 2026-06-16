@@ -30,7 +30,7 @@ The simplest CORS configuration allows specific origins with default settings:
 		AllowCredentials().
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine := we.New().Filter(corsFilter).Build()
 
 # Path-Specific Configuration
 
@@ -57,7 +57,7 @@ paths using wildcard matching:
 
 		Build()
 
-	engine.AddFilter(corsFilter)
+	engine := we.New().Filter(corsFilter).Build()
 
 # Wildcard Path Patterns
 
@@ -152,7 +152,7 @@ configuring them, providing a secure baseline for your application.
 The simplest configuration relies on secure defaults:
 
 	filter := filters.ResponseHeaders().Build()
-	engine.AddFilter(filter)
+	engine := we.New().Filter(filter).Build()
 
 This automatically adds the two default security headers to all responses.
 
@@ -181,7 +181,7 @@ The filter provides convenient methods for common security headers:
 		CORP(CORPSameSite).
 		Build()
 
-	engine.AddFilter(filter)
+	engine := we.New().Filter(filter).Build()
 
 # HSTS Special Handling
 
@@ -302,7 +302,7 @@ wildcard matching:
 
 		Build()
 
-	engine.AddFilter(filter)
+	engine := we.New().Filter(filter).Build()
 
 # Disabling Headers for Specific Paths
 
