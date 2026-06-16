@@ -30,21 +30,51 @@ go-we is a lightweight HTTP web framework that implements the `http.Handler` int
 
 ### WebEngine
 
-The `WebEngine` is the central component that implements `http.Handler`. It manages:
+The `engine` is the central component that implements `http.Handler`. It is created using a builder pattern and manages:
 
 - **Path Trees** - Separate trees for each HTTP method plus an "ALL" tree
 - **Filters** - Ordered list of filters to execute before handlers
 - **Session Manager** - Optional session management
 - **Error Handler** - Customizable error handling
+- **Server Configuration** - Timeout settings and server options
 
 ```go
-type webEngine struct {
-    matchTrees     map[string]pathTree.Tree[HandlerFunction]
-    filters        []Filter
-    sessionManager SessionManager
-    errorHandler   ErrorHandler
+type engine struct {
+    matchTrees        map[string]pathTree.Tree[HandlerFunction]
+    filters           []Filter
+    sessionManager    SessionManager
+    errorHandler      ErrorHandler
+    server            *http.Server
+    readHeaderTimeout time.Duration
+    readTimeout       time.Duration
+    writeTimeout      time.Duration
+    idleTimeout       time.Duration
+    maxHeaderBytes    int
 }
 ```
+
+**Creating the Engine:**
+
+The engine is created using a fluent builder API:
+
+```go
+engine := we.New().
+    Handle("/", homeHandler).
+    HandleMethod("GET", "/users", listUsers).
+    HandleMethod("POST", "/users", createUser).
+    Filter(corsFilter).
+    Filter(securityFilter).
+    SessionManager(sessionManager).
+    ErrorHandler(customErrorHandler).
+    ReadHeaderTimeout(15 * time.Second).
+    Build()
+```
+
+This builder pattern provides:
+- Type-safe configuration
+- Compile-time validation
+- Immutable engine after building
+- Clear separation between configuration and runtime
 
 ### RequestScope
 
@@ -53,8 +83,9 @@ The `RequestScope` interface wraps `http.Request` and provides convenient access
 - Path variables extracted from the URL
 - Query parameters
 - Request-scoped attributes
-- Session attributes
+- Session access through Session interface
 - The underlying request context
+- Request creation timestamp
 
 This abstraction decouples handlers from direct HTTP dependencies and makes testing easier.
 
@@ -63,7 +94,23 @@ type requestScope struct {
     request    *http.Request
     attributes map[string]any
     variables  map[string]string
-    session    *Session
+    session    Session      // Session interface, not pointer
+    timestamp  time.Time    // Request creation timestamp
+}
+```
+
+**Accessing Session:**
+
+The RequestScope provides a `Session()` method that returns a Session interface:
+
+```go
+func handler(w http.ResponseWriter, scope we.RequestScope) error {
+    // Access session through interface
+    if scope.HasSession() {
+        scope.Session().Set("user_id", "123")
+        userId := scope.Session().Get("user_id")
+    }
+    return nil
 }
 ```
 
@@ -181,10 +228,12 @@ When multiple patterns match a path, precedence is:
 **Example:**
 
 ```go
-engine.Handle("/api/health", healthHandler)      // Exact
-engine.Handle("/api/{resource}", resourceHandler) // Variable
-engine.Handle("/api/*", singleWildcardHandler)    // Single wildcard
-engine.Handle("/api/**", doubleWildcardHandler)   // Double wildcard
+engine := we.New().
+    Handle("/api/health", healthHandler).      // Exact
+    Handle("/api/{resource}", resourceHandler). // Variable
+    Handle("/api/*", singleWildcardHandler).    // Single wildcard
+    Handle("/api/**", doubleWildcardHandler).   // Double wildcard
+    Build()
 
 // Request: /api/health
 // Matches: healthHandler (exact wins)
@@ -236,9 +285,11 @@ Filters receive:
 Filters execute in **registration order**:
 
 ```go
-engine.AddFilter(loggingFilter)    // Executes first
-engine.AddFilter(corsFilter)       // Executes second
-engine.AddFilter(securityFilter)   // Executes third
+engine := we.New().
+    Filter(loggingFilter).    // Executes first
+    Filter(corsFilter).       // Executes second
+    Filter(securityFilter).   // Executes third
+    Build()
 // ... then handler
 ```
 
@@ -294,7 +345,9 @@ corsFilter := filters.Cors().
     
     Build()
 
-engine.AddFilter(corsFilter)
+engine := we.New().
+    Filter(corsFilter).
+    Build()
 ```
 
 **Request matching examples:**
@@ -332,7 +385,9 @@ headersFilter := filters.ResponseHeaders().
     
     Build()
 
-engine.AddFilter(headersFilter)
+engine := we.New().
+    Filter(headersFilter).
+    Build()
 ```
 
 **Path precedence example:**
@@ -349,6 +404,52 @@ Request to `/api/v1/users` → Matches `/api/**` only (lowest precedence)
 This path-specific configuration architecture provides fine-grained control while maintaining a clean, declarative API.
 
 ## Session Management
+
+### Session Interface
+
+Sessions are accessed through a clean interface that provides:
+
+```go
+type Session interface {
+    Get(key string) any
+    Set(key string, value any)
+    Delete(key string)
+    Clear()
+}
+```
+
+The underlying `SessionObject` implements this interface and contains:
+
+```go
+type SessionObject struct {
+    Status     uint           // SessionStatusNew or SessionStatusExisting
+    LastUse    time.Time      // Timestamp of last session use
+    Id         string         // Unique session identifier
+    Attributes map[string]any // Session data storage
+}
+```
+
+**Using Sessions:**
+
+```go
+func handler(w http.ResponseWriter, scope we.RequestScope) error {
+    if scope.HasSession() {
+        // Set values
+        scope.Session().Set("user_id", "123")
+        scope.Session().Set("username", "john")
+        
+        // Get values
+        userId := scope.Session().Get("user_id")
+        
+        // Delete specific key
+        scope.Session().Delete("temp_data")
+        
+        // Clear all session data
+        scope.Session().Clear()
+    }
+    return nil
+}
+```
 
 ### Session Lifecycle
 
@@ -392,11 +493,29 @@ Sessions can use:
 
 ```go
 type SessionStorage interface {
-    Get(ctx context.Context, sessionId string) *Session
-    Put(ctx context.Context, session *Session) *Session
-    Delete(ctx context.Context, sessionId string) *Session
+    Get(ctx context.Context, sessionId string) *SessionObject
+    Put(ctx context.Context, session *SessionObject) *SessionObject
+    Delete(ctx context.Context, sessionId string) *SessionObject
     PurgeOlderThan(ctx context.Context, age time.Duration)
 }
+```
+
+**Configuring Sessions:**
+
+Sessions are configured using a builder pattern and attached to the engine:
+
+```go
+sessionManager := we.DefaultSessionManager().
+    SessionTimeout(2 * time.Hour).
+    CookieName("myapp_session").
+    CookieSecure(true).
+    CookieSameSite(http.SameSiteStrictMode).
+    Build()
+
+engine := we.New().
+    SessionManager(sessionManager).
+    Handle("/", handler).
+    Build()
 ```
 
 ### Session Modes
@@ -494,6 +613,10 @@ security.Filter(restrictedByDefault).
     Path("/admin/**").
         Authorize(security.Scope("admin")).  // Extra check
     
+    Build()
+
+engine := we.New().
+    Filter(securityFilter).
     Build()
 ```
 
@@ -607,19 +730,32 @@ Use cases:
 
 ### 1. Builder Pattern
 
-Extensively used for configuration:
+Extensively used for configuration of engine, filters, session manager, and security:
 
 ```go
+// Engine builder
+engine := we.New().
+    Handle("/", homeHandler).
+    Filter(corsFilter).
+    SessionManager(sessionManager).
+    Build()
+
 // Security filter builder
-security.Filter(true).
+securityFilter := security.Filter(true).
     Authentication(provider).
     Path("/admin/**").
         Authorize(scope).
         Add().
     Build()
 
+// Session manager builder
+sessionManager := we.DefaultSessionManager().
+    SessionTimeout(2 * time.Hour).
+    CookieSecure(true).
+    Build()
+
 // CORS filter builder
-filters.Cors().
+corsFilter := filters.Cors().
     AllowedOrigins("https://example.com").
     AllowedMethods("GET", "POST").
     AllowCredentials().
@@ -631,6 +767,8 @@ filters.Cors().
 - Readable, fluent API
 - Compile-time validation
 - Self-documenting
+- Immutable after building
+- Clear separation between configuration and runtime
 
 ### 2. Filter Chain (Chain of Responsibility)
 
@@ -725,10 +863,11 @@ if needsLogin {
 
 ### Concurrent Access
 
-- **WebEngine**: Immutable after setup (thread-safe)
-- **Path Trees**: Read-only after setup (thread-safe)
+- **Engine**: Immutable after Build() (thread-safe)
+- **Path Trees**: Read-only after Build() (thread-safe)
 - **Sessions**: Mutex-protected storage operations
 - **RequestScope**: Per-request, not shared
+- **Events**: Immutable (thread-safe)
 
 ### Shared State
 
