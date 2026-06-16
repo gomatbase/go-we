@@ -426,14 +426,9 @@ type EngineBuilder interface {
 
 // engineBuilder is the EngineBuilder implementation
 type engineBuilder struct {
-	engine            *engine
-	sessionManager    SessionManager
-	errorHandler      ErrorHandler
-	readHeaderTimeout time.Duration
-	readTimeout       time.Duration
-	writeTimeout      time.Duration
-	idleTimeout       time.Duration
-	maxHeaderBytes    int
+	engine         *engine
+	sessionManager SessionManager
+	errorHandler   ErrorHandler
 }
 
 // Handle registers a handler for a path. The handler will be called for all HTTP methods
@@ -470,7 +465,7 @@ func (eb *engineBuilder) SessionManager(sessionManager SessionManager) EngineBui
 
 // ErrorHandler sets a custom error handler for the engine
 func (eb *engineBuilder) ErrorHandler(errorHandler ErrorHandler) EngineBuilder {
-	eb.errorHandler = errorHandler
+	eb.engine.errorHandler = errorHandler
 	return eb
 }
 
@@ -479,7 +474,7 @@ func (eb *engineBuilder) ReadHeaderTimeout(timeout time.Duration) EngineBuilder 
 	if timeout < 0 {
 		panic(errors.New("read header timeout must be >= 0"))
 	}
-	eb.readHeaderTimeout = timeout
+	eb.engine.readHeaderTimeout = timeout
 	return eb
 }
 
@@ -488,7 +483,7 @@ func (eb *engineBuilder) ReadTimeout(timeout time.Duration) EngineBuilder {
 	if timeout <= 0 {
 		panic("read timeout must be > 0")
 	}
-	eb.readTimeout = timeout
+	eb.engine.readTimeout = timeout
 	return eb
 }
 
@@ -497,7 +492,7 @@ func (eb *engineBuilder) WriteTimeout(timeout time.Duration) EngineBuilder {
 	if timeout <= 0 {
 		panic("write timeout must be > 0")
 	}
-	eb.writeTimeout = timeout
+	eb.engine.writeTimeout = timeout
 	return eb
 }
 
@@ -506,7 +501,7 @@ func (eb *engineBuilder) IdleTimeout(timeout time.Duration) EngineBuilder {
 	if timeout <= 0 {
 		panic("idle timeout must be > 0")
 	}
-	eb.idleTimeout = timeout
+	eb.engine.idleTimeout = timeout
 	return eb
 }
 
@@ -515,7 +510,7 @@ func (eb *engineBuilder) MaxHeaderBytes(bytes int) EngineBuilder {
 	if bytes <= 0 {
 		panic("max header bytes must be > 0")
 	}
-	eb.maxHeaderBytes = bytes
+	eb.engine.maxHeaderBytes = bytes
 	return eb
 }
 
