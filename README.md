@@ -43,12 +43,12 @@ import (
 )
 
 func main() {
-    engine := we.New()
-    
-    engine.Handle("/", func(w http.ResponseWriter, scope we.RequestScope) error {
-        w.Write([]byte("Hello, World!"))
-        return nil
-    })
+    engine := we.New().
+        Handle("/", func(w http.ResponseWriter, scope we.RequestScope) error {
+            w.Write([]byte("Hello, World!"))
+            return nil
+        }).
+        Build()
     
     engine.Listen(":8080")
 }
@@ -57,21 +57,25 @@ func main() {
 ### Path Variables
 
 ```go
-engine.Handle("/users/{id}/posts/{postId}", func(w http.ResponseWriter, scope we.RequestScope) error {
-    userId := scope.Var("id")
-    postId := scope.Var("postId")
-    w.Write([]byte("User: " + userId + ", Post: " + postId))
-    return nil
-})
+engine := we.New().
+    Handle("/users/{id}/posts/{postId}", func(w http.ResponseWriter, scope we.RequestScope) error {
+        userId := scope.Var("id")
+        postId := scope.Var("postId")
+        w.Write([]byte("User: " + userId + ", Post: " + postId))
+        return nil
+    }).
+    Build()
 ```
 
 ### Method-Specific Handlers
 
 ```go
-engine.HandleMethod("GET", "/api/users", listUsers)
-engine.HandleMethod("POST", "/api/users", createUser)
-engine.HandleMethod("PUT", "/api/users/{id}", updateUser)
-engine.HandleMethod("DELETE", "/api/users/{id}", deleteUser)
+engine := we.New().
+    HandleMethod("GET", "/api/users", listUsers).
+    HandleMethod("POST", "/api/users", createUser).
+    HandleMethod("PUT", "/api/users/{id}", updateUser).
+    HandleMethod("DELETE", "/api/users/{id}", deleteUser).
+    Build()
 ```
 
 ### With Sessions
@@ -79,28 +83,25 @@ engine.HandleMethod("DELETE", "/api/users/{id}", deleteUser)
 ```go
 import "time"
 
-engine := we.New()
-
-// Configure session manager
-engine.SetSessionManager(we.DefaultSessionManager(we.SessionManagerConfiguration{
-    SessionTimeout: time.Hour,
-    CookieName: "myapp_session",
-}))
-
-engine.Handle("/login", func(w http.ResponseWriter, scope we.RequestScope) error {
-    scope.SetInSession("user_id", "12345")
-    w.Write([]byte("Logged in!"))
-    return nil
-})
-
-engine.Handle("/profile", func(w http.ResponseWriter, scope we.RequestScope) error {
-    userId := scope.GetFromSession("user_id")
-    if userId == nil {
-        return events.UnauthorizedError
-    }
-    w.Write([]byte("User ID: " + userId.(string)))
-    return nil
-})
+engine := we.New().
+    SessionManager(we.DefaultSessionManager().
+        SessionTimeout(time.Hour).
+        CookieName("myapp_session").
+        Build()).
+    Handle("/login", func(w http.ResponseWriter, scope we.RequestScope) error {
+        scope.Session().Set("user_id", "12345")
+        w.Write([]byte("Logged in!"))
+        return nil
+    }).
+    Handle("/profile", func(w http.ResponseWriter, scope we.RequestScope) error {
+        userId := scope.Session().Get("user_id")
+        if userId == nil {
+            return events.UnauthorizedError
+        }
+        w.Write([]byte("User ID: " + userId.(string)))
+        return nil
+    }).
+    Build()
 ```
 
 ## Core Concepts
@@ -124,8 +125,8 @@ func handler(w http.ResponseWriter, scope we.RequestScope) error {
     requestId := scope.Get("request_id")
     
     // Session attributes
-    scope.SetInSession("last_visit", time.Now())
-    lastVisit := scope.GetFromSession("last_visit")
+    scope.Session().Set("last_visit", time.Now())
+    lastVisit := scope.Session().Get("last_visit")
     
     // Access underlying request
     method := scope.Request().Method
@@ -188,7 +189,9 @@ func loggingFilter(headers http.Header, scope we.RequestScope) error {
     return nil
 }
 
-engine.AddFilter(we.FilterFunction(loggingFilter))
+engine := we.New().
+    Filter(we.FilterFunction(loggingFilter)).
+    Build()
 ```
 
 ### Built-in CORS Filter
@@ -196,15 +199,15 @@ engine.AddFilter(we.FilterFunction(loggingFilter))
 ```go
 import "github.com/gomatbase/go-we/filters"
 
-corsFilter := filters.Cors().
-    AllowedOrigins("https://example.com", "https://app.example.com").
-    AllowedMethods("GET", "POST", "PUT", "DELETE").
-    AllowedHeaders("Authorization", "Content-Type").
-    AllowCredentials().
-    MaxAge(3600).
+engine := we.New().
+    Filter(filters.Cors().
+        AllowedOrigins("https://example.com", "https://app.example.com").
+        AllowedMethods("GET", "POST", "PUT", "DELETE").
+        AllowedHeaders("Authorization", "Content-Type").
+        AllowCredentials().
+        MaxAge(3600).
+        Build()).
     Build()
-
-engine.AddFilter(corsFilter)
 ```
 
 ### Built-in Security Headers Filter
@@ -212,13 +215,13 @@ engine.AddFilter(corsFilter)
 ```go
 import "github.com/gomatbase/go-we/filters"
 
-headersFilter := filters.ResponseHeaders().
-    HSTS(31536000, true, false). // max-age=1 year, includeSubDomains, no preload
-    CSP("default-src 'self'; script-src 'self' 'unsafe-inline'").
-    ReferrerPolicy(filters.ReferrerStrictOriginWhenCrossOrigin).
+engine := we.New().
+    Filter(filters.ResponseHeaders().
+        HSTS(31536000, true, false). // max-age=1 year, includeSubDomains, no preload
+        CSP("default-src 'self'; script-src 'self' 'unsafe-inline'").
+        ReferrerPolicy(filters.ReferrerPolicyStrictOriginWhenCrossOrigin).
+        Build()).
     Build()
-
-engine.AddFilter(headersFilter)
 ```
 
 ## Authentication & Authorization
@@ -228,17 +231,17 @@ engine.AddFilter(headersFilter)
 ```go
 import "github.com/gomatbase/go-we/security"
 
-securityFilter := security.Filter(true). // restricted by default
-    Path("/admin/**").
-        Authentication(
-            security.BasicAuthenticationProvider(
-                security.User{Username: "admin", Password: "secret", Scopes: []string{"admin"}},
-            ).Build(),
-        ).
-        Authorize(security.Scope("admin")).
+engine := we.New().
+    Filter(security.Filter(true). // restricted by default
+        Path("/admin/**").
+            Authentication(
+                security.BasicAuthenticationProvider(
+                    security.User{Username: "admin", Password: "secret", Scopes: []string{"admin"}},
+                ).Build(),
+            ).
+            Authorize(security.Scope("admin")).
+        Build()).
     Build()
-
-engine.AddFilter(securityFilter)
 ```
 
 ### Bearer Token (JWT) Authentication
@@ -255,17 +258,17 @@ func (m *MyTokenIntrospector) Introspect(ctx context.Context, token string) (*se
     return &security.User{Username: "john", Scopes: []string{"api:read"}}, nil
 }
 
-securityFilter := security.Filter(false). // anonymous by default
-    Path("/api/**").
-        Authentication(
-            security.BearerAuthenticationProvider().
-                Introspector(&MyTokenIntrospector{}).
-                Build(),
-        ).
-        Authorize(security.Scope("api:read")).
+engine := we.New().
+    Filter(security.Filter(false). // anonymous by default
+        Path("/api/**").
+            Authentication(
+                security.BearerAuthenticationProvider().
+                    Introspector(&MyTokenIntrospector{}).
+                    Build(),
+            ).
+            Authorize(security.Scope("api:read")).
+        Build()).
     Build()
-
-engine.AddFilter(securityFilter)
 ```
 
 ### OAuth2/OpenID Connect
@@ -273,26 +276,23 @@ engine.AddFilter(securityFilter)
 ```go
 import "github.com/gomatbase/go-we/security"
 
-// Configure OpenID provider
-oidcProvider := security.OpenIdIdentityProvider().
-    Issuer("https://accounts.google.com").
-    ClientId("your-client-id").
-    ClientSecret("your-client-secret").
-    RedirectHandler("/auth/callback").
-    Scopes("openid", "profile", "email").
+// Configure OpenID provider (Google example)
+oidcProvider := security.OpenIdIdentityProvider("https://accounts.google.com").
+    Client("your-client-id", "your-client-secret").
+    Scope("openid", "profile", "email").
     Build()
 
-securityFilter := security.Filter(true).
-    Path("/app/**").
-        Authentication(
-            security.SSOAuthenticationProvider(oidcProvider).
-                LoginPath("/login").
-                Build(),
-        ).
+engine := we.New().
+    SessionManager(we.DefaultSessionManager().Build()).
+    Filter(security.Filter(true).
+        Path("/app/**").
+            Authentication(
+                security.SSOAuthenticationProvider().
+                    AuthorizationCodeProvider(oidcProvider).
+                    Build(),
+            ).
+        Build()).
     Build()
-
-engine.SetSessionManager(we.DefaultSessionManager(we.SessionManagerConfiguration{}))
-engine.AddFilter(securityFilter)
 ```
 
 ### Form-Based Login
@@ -305,21 +305,21 @@ loginForm := security.DefaultLoginForm(security.LoginFormConfiguration{
     Title: "Please Login",
 })
 
-securityFilter := security.Filter(true).
-    Path("/app/**").
-        Authentication(
-            security.LoginFormAuthenticationProvider(
-                security.User{Username: "user", Password: "pass"},
+engine := we.New().
+    SessionManager(we.DefaultSessionManager().Build()).
+    Filter(security.Filter(true).
+        Path("/app/**").
+            Authentication(
+                security.LoginFormAuthenticationProvider(
+                    security.User{Username: "user", Password: "pass"},
+                ).
+                    LoginForm(loginForm).
+                    Required(true).
+                    RedirectToForm(true).
+                    Build(),
             ).
-                LoginForm(loginForm).
-                Required(true).
-                RedirectToForm(true).
-                Build(),
-        ).
+        Build()).
     Build()
-
-engine.SetSessionManager(we.DefaultSessionManager(we.SessionManagerConfiguration{}))
-engine.AddFilter(securityFilter)
 ```
 
 ### Multiple Authentication Methods
@@ -357,17 +357,14 @@ securityFilter := security.Filter(false). // anonymous by default
 ## Graceful Shutdown
 
 ```go
-var shutdown func(time.Duration) error
-
-engine := we.New()
-engine.HookGraciousShutdownFunction(&shutdown)
-
-// Configure handlers...
+engine := we.New().
+    Handle("/", handler).
+    Build()
 
 go engine.Listen(":8080")
 
 // On shutdown signal...
-if err := shutdown(30 * time.Second); err != nil {
+if err := engine.GraciouslyShutdown(30 * time.Second); err != nil {
     log.Printf("Shutdown error: %v", err)
 }
 ```
