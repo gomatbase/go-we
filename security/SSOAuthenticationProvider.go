@@ -4,12 +4,15 @@
 
 package security
 
+// TODO improve documentation and analyze the dynamic url calculation
+
 import (
 	"context"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/gomatbase/go-we"
 	"github.com/gomatbase/go-we/events"
@@ -136,6 +139,7 @@ func SSOAuthenticationProvider() SSOAuthenticationProviderBuilder {
 }
 
 type ssoAuthenticationProvider struct {
+	mu                        sync.RWMutex
 	realm                     string
 	authorizationCodeProvider AuthorizationCodeProvider
 	replyHandlerEndpoint      string
@@ -156,13 +160,21 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 	requestUrl := scope.Request().URL
 	if requestUrl.Path == sap.replyHandlerEndpoint {
 		requestId, authorizationCode := sap.authorizationCodeProvider.State(request)
+
+		// Check and handle authorization requests
+		sap.mu.RLock()
 		originalDestination, found := sap.authorizationRequests[requestId]
+		sap.mu.RUnlock()
+
 		if !found {
 			// in case this might be a redirection mistake, the authenticated redirection should go back to the default endpoint
 			requestUrl.Path = sap.defaultEndpoint
 			requestUrl.RawQuery = ""
 		} else {
+			// Delete the authorization request
+			sap.mu.Lock()
 			delete(sap.authorizationRequests, requestId)
+			sap.mu.Unlock()
 
 			if user, e := sap.authorizationCodeProvider.ValidateAuthorizationCode(scope.Context(), authorizationCode, sap.redirectUrl(request)); e != nil {
 				return nil, events.UnauthorizedError
@@ -176,7 +188,10 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 				if !scope.HasSession() {
 					// There are no sessions in place, let's provide an OTP through a query parameter
 					otp := uuid.NewString()
+					sap.mu.Lock()
 					sap.otps[otp] = user
+					sap.mu.Unlock()
+
 					q := originalDestination.Query()
 					q.Add("otp", otp)
 					originalDestination.RawQuery = q.Encode()
@@ -189,8 +204,14 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 	// we check if there's an OTP in the request, which would be the case when there's no sessions active and the
 	// authorization should redirect to the original destination
 	if otp, found := scope.LookupParameters("otp"); found {
-		if user, found := sap.otps[otp[0]]; found {
+		sap.mu.RLock()
+		user, found := sap.otps[otp[0]]
+		sap.mu.RUnlock()
+
+		if found {
+			sap.mu.Lock()
 			delete(sap.otps, otp[0])
+			sap.mu.Unlock()
 			return user, nil
 		} else {
 			// not found, might be a refresh. Let's remove the otp and redirect to the requested url
@@ -204,7 +225,11 @@ func (sap *ssoAuthenticationProvider) Authenticate(headers http.Header, scope we
 	requestId := uuid.NewString()
 	// the request doesn't have the scheme and host of the request, let's fill it and store it for later authentication redirection
 	request.URL.Scheme, request.URL.Host, _ = sap.baseUrlSchemeAndHost(request)
+
+	sap.mu.Lock()
 	sap.authorizationRequests[requestId] = request.URL
+	sap.mu.Unlock()
+
 	return nil, events.FoundRedirect.WithAttribute(sap.authorizationCodeProvider.AuthorizationUrl(sap.redirectUrl(request), requestId))
 }
 
@@ -221,7 +246,12 @@ func (sap *ssoAuthenticationProvider) baseUrl(request *http.Request) string {
 }
 
 func (sap *ssoAuthenticationProvider) baseUrlSchemeAndHost(request *http.Request) (scheme string, host string, address string) {
-	if sap.dynamicBaseUrl || len(sap.addressSchema) == 0 || len(sap.addressHost) == 0 {
+	sap.mu.RLock()
+	shouldFetch := sap.dynamicBaseUrl || len(sap.addressSchema) == 0 || len(sap.addressHost) == 0
+	isDynamic := sap.dynamicBaseUrl
+	sap.mu.RUnlock()
+
+	if shouldFetch {
 		if forwarded := request.Header.Get("Forwarded"); len(forwarded) > 0 {
 			// Forwarded header is present, let's try to use it
 			segments := strings.Split(forwarded, ";")
@@ -250,11 +280,19 @@ func (sap *ssoAuthenticationProvider) baseUrlSchemeAndHost(request *http.Request
 		}
 
 		address = fmt.Sprintf("%s://%s", scheme, host)
-		if !sap.dynamicBaseUrl {
+		if !isDynamic {
+			sap.mu.Lock()
 			sap.addressSchema = scheme
 			sap.addressHost = host
 			sap.address = address
+			sap.mu.Unlock()
 		}
+	} else {
+		sap.mu.RLock()
+		scheme = sap.addressSchema
+		host = sap.addressHost
+		address = sap.address
+		sap.mu.RUnlock()
 	}
 	return
 }
