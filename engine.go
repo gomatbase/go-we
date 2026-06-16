@@ -218,6 +218,13 @@ type engine struct {
 // Shutdown immediately shuts down the server. If the server is not managed by the engine (if the engine
 // is embedded in an independently configured http server or simply not started) this method will return an error.
 func (wc *engine) Shutdown() error {
+	// Stop the session manager purge loop if one is configured
+	if wc.sessionManager != nil {
+		if sm, ok := wc.sessionManager.(*sessionManager); ok {
+			sm.Stop()
+		}
+	}
+
 	if wc.server == nil {
 		return fmt.Errorf("listener not managed by engine")
 	}
@@ -228,6 +235,13 @@ func (wc *engine) Shutdown() error {
 // to finish for up to the provided waiting time. If the server is not managed by the engine (if the engine is
 // embedded in an independently configured http server or simply not started) this method will return an error.
 func (wc *engine) GraciouslyShutdown(waitingTime time.Duration) error {
+	// Stop the session manager purge loop if one is configured
+	if wc.sessionManager != nil {
+		if sm, ok := wc.sessionManager.(*sessionManager); ok {
+			sm.Stop()
+		}
+	}
+
 	if wc.server == nil {
 		return fmt.Errorf("listener not managed by engine")
 	}

@@ -171,6 +171,7 @@ type sessionManager struct {
 	cookiePartitioned bool
 
 	storageMutex sync.Mutex
+	done         chan struct{}
 }
 
 func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request) Session {
@@ -241,10 +242,25 @@ func (sm *sessionManager) purgeSessions() {
 
 func (sm *sessionManager) purgeLoop(interval time.Duration) {
 	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
 
 	for {
-		<-ticker.C
-		sm.purgeSessions()
+		select {
+		case <-ticker.C:
+			sm.purgeSessions()
+		case <-sm.done:
+			return
+		}
+	}
+}
+
+// Stop stops the session manager's purge loop goroutine
+func (sm *sessionManager) Stop() {
+	select {
+	case <-sm.done:
+		// already closed
+	default:
+		close(sm.done)
 	}
 }
 
@@ -469,6 +485,7 @@ func DefaultSessionManager() SessionManagerBuilder {
 			cookieHttpOnly: true,
 			cookieSameSite: http.SameSiteLaxMode,
 			cookiePath:     "/",
+			done:           make(chan struct{}),
 		},
 		sessionPurgingInterval: DefaultPurgeInterval,
 	}
