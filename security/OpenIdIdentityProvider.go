@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gomatbase/csn"
@@ -369,6 +370,7 @@ With that, it should be able to introspect the token to get all scopes/roles. th
 jwt, should be validated using the exposed jwk endpoint.
 */
 type openIdIdentityProvider struct {
+	mu         sync.RWMutex
 	client     string
 	secret     string
 	httpClient *http.Client
@@ -442,11 +444,26 @@ func (oip *openIdIdentityProvider) isValidJwtToken(ctx context.Context, token st
 	jwtToken, segments, e := oip.jwtParser.ParseUnverified(token, &jwt.MapClaims{})
 	if e == nil {
 		// it's a valid jwt token, let's verify it
-		key, ok := oip.jwks[jwtToken.Header["kid"].(string)]
+		kidVal := jwtToken.Header["kid"]
+		if kidVal == nil {
+			return jwtToken, errors.New("missing kid in JWT header")
+		}
+		kid, ok := kidVal.(string)
 		if !ok {
+			return jwtToken, errors.New("kid in JWT header is not a string")
+		}
+
+		oip.mu.RLock()
+		key, found := oip.jwks[kid]
+		oip.mu.RUnlock()
+
+		if !found {
 			// the key is not cached, let's try to refresh the jwks. if there's an error the keys will simply not be refreshed
 			_ = oip.refreshJwks(ctx)
-			if key, ok = oip.jwks[jwtToken.Header["kid"].(string)]; !ok {
+			oip.mu.RLock()
+			key, found = oip.jwks[kid]
+			oip.mu.RUnlock()
+			if !found {
 				// still not found, let's fail
 				return jwtToken, errors.New("invalid signing key")
 			}
@@ -542,7 +559,9 @@ func (oip *openIdIdentityProvider) setKeys(keys []JwKey) error {
 		}
 	}
 
+	oip.mu.Lock()
 	oip.jwks = keyMap
+	oip.mu.Unlock()
 	return nil
 }
 
