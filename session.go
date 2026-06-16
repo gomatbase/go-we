@@ -53,6 +53,8 @@ type Session interface {
 // SessionObject is the internal implementation of a session associated to a request (either the request comes with
 // a session identifier or it is created for the request)
 type SessionObject struct {
+	mu sync.RWMutex
+
 	// Status indicates if the Session has just been created (SessionStatusNew) or if it's an existing one (SessionStatusExisting)
 	Status uint
 
@@ -68,21 +70,29 @@ type SessionObject struct {
 
 // Get returns the value of an attribute stored in the session
 func (s *SessionObject) Get(key string) any {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.Attributes[key]
 }
 
 // Set stores an attribute in the session
 func (s *SessionObject) Set(key string, value any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Attributes[key] = value
 }
 
 // Delete removes an attribute from the session
 func (s *SessionObject) Delete(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	delete(s.Attributes, key)
 }
 
 // Clear removes all attributes from the session
 func (s *SessionObject) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.Attributes = make(map[string]any)
 }
 
