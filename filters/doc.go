@@ -609,5 +609,162 @@ To use CSRF protection in HTML forms, retrieve the token from the session and in
 	</form>
 
 See the package examples for more detailed usage scenarios.
+
+# RateLimiter Filter
+
+The RateLimiter filter prevents abuse and protects against DoS attacks by limiting the number
+of requests a client can make within a specified time window using the token bucket algorithm.
+
+# Basic Usage
+
+The simplest configuration uses default rate limiting (100 requests per second, burst of 20):
+
+	filter := filters.RateLimiter().Build()
+
+	engine := we.New().Filter(filter).Build()
+
+# Custom Rate Limits
+
+Configure custom requests per second and burst size:
+
+	filter := filters.RateLimiter().
+		RequestsPerSecond(50).
+		Burst(10).
+		Build()
+
+# Exempt Paths
+
+Exempt specific paths (e.g., health checks, metrics) from rate limiting:
+
+	filter := filters.RateLimiter().
+		RequestsPerSecond(100).
+		Burst(20).
+		ExemptPaths("/health", "/metrics", "/ready").
+		Build()
+
+# Custom Identifiers
+
+By default, rate limits are applied per client IP address. You can customize the identifier
+to use user ID, API key, or any other criteria:
+
+	filter := filters.RateLimiter().
+		RequestsPerSecond(100).
+		Burst(20).
+		Identifier(func(scope we.RequestScope) string {
+			// Use user ID from session if authenticated, fall back to IP
+			user := scope.Session().Get("user_id")
+			if user != nil {
+				return "user:" + user.(string)
+			}
+			// Fall back to IP address
+			request := scope.Request()
+			if xff := request.Header.Get("X-Forwarded-For"); xff != "" {
+				return "ip:" + xff
+			}
+			return "ip:" + request.RemoteAddr
+		}).
+		Build()
+		}).
+		Build()
+
+# How It Works
+
+The filter uses the **token bucket algorithm** to implement rate limiting:
+
+1. Each unique identifier (client IP by default) gets its own token bucket
+2. Tokens are added to the bucket at a rate of RequestsPerSecond per second
+3. The bucket can hold a maximum of Burst tokens
+4. Each request consumes one token; if no tokens are available, the request is rejected
+5. Stale buckets (unused for 10 minutes) are automatically cleaned up
+
+# IP Address Detection
+
+The filter automatically handles proxied requests:
+
+1. X-Forwarded-For header (for load balancers/proxies)
+2. X-Real-IP header (for nginx/other proxies)
+3. Direct remote address as fallback
+
+This ensures accurate rate limiting even behind reverse proxies.
+
+# Examples
+
+Protect API endpoints with different limits:
+
+	filter := filters.RateLimiter().
+		RequestsPerSecond(100).
+		Burst(20).
+		ExemptPaths("/health", "/metrics").
+		Build()
+
+	engine := we.New().Filter(filter).Build()
+
+Strict rate limiting for public endpoints:
+
+	filter := filters.RateLimiter().
+		RequestsPerSecond(10).
+		Burst(5).
+		ExemptPaths("/health", "/status").
+		Build()
+
+Per-user rate limiting:
+
+	filter := filters.RateLimiter().
+		RequestsPerSecond(100).  // Default for anonymous
+		Identifier(func(scope we.RequestScope) string {
+			// Different limits per user
+			user := scope.Session().Get("user_id")
+			if user != nil {
+				return "user:" + user.(string)
+			}
+			return "anonymous:" + scope.Request().RemoteAddr
+		}).
+		Build()
+
+Combine with other filters:
+
+	csrfFilter := filters.Csrf().ExemptPaths("/api").Build()
+	rateLimitFilter := filters.RateLimiter().
+		RequestsPerSecond(100).
+		ExemptPaths("/health").
+		Build()
+
+	engine := we.New().
+		Filter(csrfFilter).
+		Filter(rateLimitFilter).
+		Build()
+
+# Default Limits
+
+The default configuration is suitable for most web applications:
+- Requests per second: 100
+- Burst size: 20
+- Identifier: Client IP address
+
+These can be easily customized for your specific needs.
+
+# HTTP Status Codes
+
+- **429 Too Many Requests**: When the rate limit is exceeded, clients receive this status code
+
+# Security Considerations
+
+- Rate limiting should be combined with other security measures (CORS, CSRF, etc.)
+- Behind a reverse proxy, ensure X-Forwarded-For or X-Real-IP headers are properly set
+- Exempt paths (like health checks) should be carefully chosen to avoid bypass opportunities
+- Monitor rate limit rejections to detect attack patterns
+- Adjust RequestsPerSecond and Burst based on your expected traffic patterns
+- Consider per-user limits for authenticated endpoints
+
+# Production Recommendations
+
+For production deployments:
+- Use per-user identifiers for authenticated endpoints
+- Implement stricter limits for public/unauthenticated endpoints
+- Monitor the rate limiting statistics
+- Adjust limits based on actual usage patterns and attack observations
+- Use load balancer rate limiting in combination with application-level limits
+
+See the package examples for more detailed usage scenarios.
 */
 package filters

@@ -83,6 +83,8 @@ var (
 	RequestURITooLongError = &weEvent{statusCode: http.StatusRequestURITooLong, category: 4, message: "URI Too Long"}
 	// UnsupportedMediaTypeError may be returned by handlers or filters to notify the client that the content-type is not supported.
 	UnsupportedMediaTypeError = &weEvent{statusCode: http.StatusUnsupportedMediaType, category: 4, message: "Unsupported Media Type"}
+	// TooManyRequestsError may be returned by rate limiting filters to notify the client that the rate limit has been exceeded.
+	TooManyRequestsError = &weEvent{statusCode: http.StatusTooManyRequests, category: 4, message: "Too Many Requests"}
 )
 
 // Server Errors typically used to handle internal panics and inform the client of a server side runtime error.
