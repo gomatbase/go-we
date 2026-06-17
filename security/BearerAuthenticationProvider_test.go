@@ -123,3 +123,21 @@ func TestBearerAuthenticationProvider_Authenticate(t *testing.T) {
 		}
 	})
 }
+
+// mockIntrospector is a mock TokenIntrospector for bearer coverage tests
+type mockIntrospector struct{}
+
+func (m *mockIntrospector) Introspect(_ context.Context, token string) (*security.User, error) {
+	return nil, nil
+}
+
+// TestCoverageBearerAuthEndpoints tests BearerAuthenticationProvider Endpoints()
+func TestCoverageBearerAuthEndpoints(t *testing.T) {
+	provider := security.BearerAuthenticationProvider().
+		Introspector(&mockIntrospector{}).
+		Build()
+	endpoints := provider.Endpoints()
+	if endpoints != nil {
+		t.Errorf("Expected BearerAuthenticationProvider Endpoints() to return nil, got: %v", endpoints)
+	}
+}

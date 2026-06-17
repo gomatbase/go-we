@@ -5,9 +5,12 @@
 package security_test
 
 import (
+	"net/http"
 	"testing"
 
+	"github.com/gomatbase/go-we"
 	"github.com/gomatbase/go-we/security"
+	"github.com/gomatbase/go-we/test"
 )
 
 func TestOrigin(t *testing.T) {
@@ -120,4 +123,64 @@ func TestAll(t *testing.T) {
 	if authorization.IsAuthorized(security.Anonymous, nil) {
 		t.Error("Anonymous user should not be authorized")
 	}
+}
+
+// TestCoverageAuthorizationFunc tests AuthorizationFunc IsAuthorized
+func TestCoverageAuthorizationFunc(t *testing.T) {
+	t.Run("AuthorizationFunc wraps function as Authorization", func(t *testing.T) {
+		authFunc := security.AuthorizationFunc(func(user *security.User, scope we.RequestScope) bool {
+			return user != nil && user.Username == "admin"
+		})
+
+		if authFunc.IsAuthorized(nil, nil) {
+			t.Error("Nil user should not be authorized")
+		}
+		user := &security.User{Username: "user"}
+		if authFunc.IsAuthorized(user, nil) {
+			t.Error("Non-admin user should not be authorized")
+		}
+		admin := &security.User{Username: "admin"}
+		if !authFunc.IsAuthorized(admin, nil) {
+			t.Error("Admin user should be authorized")
+		}
+	})
+}
+
+// TestCoverageMethodAuthorization tests Method IsAuthorized
+func TestCoverageMethodAuthorization(t *testing.T) {
+	t.Run("Method authorization checks request method", func(t *testing.T) {
+		getAuth := security.Method(http.MethodGet)
+		postAuth := security.Method(http.MethodPost)
+
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
+		if !getAuth.IsAuthorized(nil, scope) {
+			t.Error("GET method should be authorized for GET request")
+		}
+		if postAuth.IsAuthorized(nil, scope) {
+			t.Error("POST method should not be authorized for GET request")
+		}
+	})
+}
+
+// TestCoverageAuthorizedType tests the Authorized type
+func TestCoverageAuthorizedType(t *testing.T) {
+	t.Run("Authorized true always authorizes", func(t *testing.T) {
+		auth := security.Authorized(true)
+		if !auth.IsAuthorized(nil, nil) {
+			t.Error("Authorized(true) should always authorize")
+		}
+		if !auth.IsAuthorized(&security.User{}, nil) {
+			t.Error("Authorized(true) should always authorize")
+		}
+	})
+
+	t.Run("Authorized false never authorizes", func(t *testing.T) {
+		auth := security.Authorized(false)
+		if auth.IsAuthorized(nil, nil) {
+			t.Error("Authorized(false) should never authorize")
+		}
+		if auth.IsAuthorized(&security.User{Username: "admin"}, nil) {
+			t.Error("Authorized(false) should never authorize")
+		}
+	})
 }

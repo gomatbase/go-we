@@ -7,6 +7,8 @@ package events
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -139,4 +141,138 @@ func TestWeEvent_Category(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandleFlowEvent(t *testing.T) {
+	t.Run("non-WeEvent error returns false Unknown nil", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		handled, category, event := HandleFlowEvent(w, errors.New("plain error"))
+		if handled {
+			t.Error("Expected handled to be false")
+		}
+		if category != Unknown {
+			t.Errorf("Expected category Unknown (0), got %d", category)
+		}
+		if event != nil {
+			t.Error("Expected event to be nil")
+		}
+	})
+
+	t.Run("Interruption with payload sets Content-type status and body", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		payload := &Payload{"application/json", []byte(`{"error":"bad"}`)}
+		e := NewPayload(200, "ok", payload)
+		handled, category, event := HandleFlowEvent(w, e)
+		if !handled {
+			t.Error("Expected handled to be true")
+		}
+		if category != Interruption {
+			t.Errorf("Expected category Interruption (2), got %d", category)
+		}
+		if event == nil {
+			t.Fatal("Expected event to be non-nil")
+		}
+		resp := w.Result()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", resp.StatusCode)
+		}
+		if ct := w.Header().Get("Content-type"); ct != "application/json" {
+			t.Errorf("Expected Content-type 'application/json', got '%s'", ct)
+		}
+		if body := w.Body.String(); body != `{"error":"bad"}` {
+			t.Errorf("Expected body '{\"error\":\"bad\"}', got '%s'", body)
+		}
+	})
+
+	t.Run("Interruption without payload sets only status code", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		e := New(204, "no content")
+		handled, category, event := HandleFlowEvent(w, e)
+		if !handled {
+			t.Error("Expected handled to be true")
+		}
+		if category != Interruption {
+			t.Errorf("Expected category Interruption (2), got %d", category)
+		}
+		if event == nil {
+			t.Fatal("Expected event to be non-nil")
+		}
+		resp := w.Result()
+		if resp.StatusCode != http.StatusNoContent {
+			t.Errorf("Expected status 204, got %d", resp.StatusCode)
+		}
+		if ct := w.Header().Get("Content-type"); ct != "" {
+			t.Errorf("Expected no Content-type header, got '%s'", ct)
+		}
+		if body := w.Body.String(); body != "" {
+			t.Errorf("Expected empty body, got '%s'", body)
+		}
+	})
+
+	t.Run("Redirection sets Location header and status code", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		e := New(302, "found").WithAttribute("https://example.com/redirect")
+		handled, category, event := HandleFlowEvent(w, e)
+		if !handled {
+			t.Error("Expected handled to be true")
+		}
+		if category != Redirection {
+			t.Errorf("Expected category Redirection (3), got %d", category)
+		}
+		if event == nil {
+			t.Fatal("Expected event to be non-nil")
+		}
+		resp := w.Result()
+		if resp.StatusCode != http.StatusFound {
+			t.Errorf("Expected status 302, got %d", resp.StatusCode)
+		}
+		if loc := w.Header().Get("Location"); loc != "https://example.com/redirect" {
+			t.Errorf("Expected Location 'https://example.com/redirect', got '%s'", loc)
+		}
+	})
+
+	t.Run("RequestFlow category returns false with event", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		e := New(100, "continue")
+		handled, category, event := HandleFlowEvent(w, e)
+		if handled {
+			t.Error("Expected handled to be false")
+		}
+		if category != RequestFlow {
+			t.Errorf("Expected category RequestFlow (1), got %d", category)
+		}
+		if event == nil {
+			t.Fatal("Expected event to be non-nil")
+		}
+	})
+
+	t.Run("Client error category returns false with event", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		e := New(404, "not found")
+		handled, category, event := HandleFlowEvent(w, e)
+		if handled {
+			t.Error("Expected handled to be false")
+		}
+		if category != EventFlowCategory(4) {
+			t.Errorf("Expected category 4, got %d", category)
+		}
+		if event == nil {
+			t.Fatal("Expected event to be non-nil")
+		}
+	})
+
+	t.Run("Server error category returns false with event", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		e := New(500, "internal server error")
+		handled, category, event := HandleFlowEvent(w, e)
+		if handled {
+			t.Error("Expected handled to be false")
+		}
+		if category != EventFlowCategory(5) {
+			t.Errorf("Expected category 5, got %d", category)
+		}
+		if event == nil {
+			t.Fatal("Expected event to be non-nil")
+		}
+	})
 }

@@ -262,3 +262,87 @@ func TestLoginFormAuthenticationProvider_Challenge(t *testing.T) {
 		t.Errorf("Unexpected challenge: %s", provider.Challenge())
 	}
 }
+
+// TestCoverageLoginFormEndpoints tests LoginFormAuthenticationProvider Endpoints()
+func TestCoverageLoginFormEndpoints(t *testing.T) {
+	provider := security.LoginFormAuthenticationProvider(security.User{Username: "user", Password: "pass"}).Build()
+	endpoints := provider.Endpoints()
+	if endpoints == nil || len(endpoints) == 0 {
+		t.Error("Expected LoginFormAuthenticationProvider Endpoints() to return login path")
+	}
+	if endpoints[0] != "/login" {
+		t.Errorf("Expected default login endpoint '/login', got: %s", endpoints[0])
+	}
+}
+
+// TestCoverageLoginFormCredentialsProvider tests the CredentialsProvider builder method
+func TestCoverageLoginFormCredentialsProvider(t *testing.T) {
+	cp := security.DefaultCredentialsProvider(security.User{Username: "admin", Password: "secret"})
+	provider := security.LoginFormAuthenticationProvider().
+		CredentialsProvider(cp).
+		Build()
+
+	if provider == nil {
+		t.Error("Expected provider to be built successfully")
+	}
+	if provider.Realm() != "Form" {
+		t.Errorf("Expected realm 'Form', got: %s", provider.Realm())
+	}
+}
+
+// TestCoverageLoginFormAuthenticate tests additional LoginForm paths
+func TestCoverageLoginFormAuthenticate(t *testing.T) {
+	t.Run("LoginForm provider with redirect to form", func(t *testing.T) {
+		provider := security.LoginFormAuthenticationProvider(security.User{Username: "user", Password: "pass"}).
+			Required(true).
+			RedirectToForm(true).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/protected")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected redirect to login form")
+		}
+	})
+
+	t.Run("LoginForm provider required without redirect shows form", func(t *testing.T) {
+		provider := security.LoginFormAuthenticationProvider(security.User{Username: "user", Password: "pass"}).
+			Required(true).
+			RedirectToForm(false).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/protected")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected unauthorized with login form")
+		}
+	})
+
+	t.Run("LoginForm provider with non-GET request and redirect", func(t *testing.T) {
+		provider := security.LoginFormAuthenticationProvider(security.User{Username: "user", Password: "pass"}).
+			Required(true).
+			RedirectToForm(true).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodPost, "http://localhost:8080/api/data")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected redirect error for POST")
+		}
+	})
+}

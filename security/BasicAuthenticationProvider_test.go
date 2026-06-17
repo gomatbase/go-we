@@ -137,3 +137,12 @@ func TestBasicAuthenticationProvider(t *testing.T) {
 		}
 	})
 }
+
+// TestCoverageBasicAuthEndpoints tests BasicAuthenticationProvider Endpoints()
+func TestCoverageBasicAuthEndpoints(t *testing.T) {
+	provider := security.BasicAuthenticationProvider(security.User{Username: "user", Password: "pass"}).Build()
+	endpoints := provider.Endpoints()
+	if endpoints != nil {
+		t.Errorf("Expected BasicAuthenticationProvider Endpoints() to return nil, got: %v", endpoints)
+	}
+}

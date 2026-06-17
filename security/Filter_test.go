@@ -196,6 +196,517 @@ func TestFilterBuilds(t *testing.T) {
 	})
 }
 
+// testLogger implements we.Logger for testing
+type testLogger struct {
+	messages []string
+}
+
+func (l *testLogger) Debug(msg string) { l.messages = append(l.messages, "[DEBUG] "+msg) }
+func (l *testLogger) Info(msg string)  { l.messages = append(l.messages, "[INFO] "+msg) }
+func (l *testLogger) Warn(msg string)  { l.messages = append(l.messages, "[WARN] "+msg) }
+func (l *testLogger) Error(msg string) { l.messages = append(l.messages, "[ERROR] "+msg) }
+func (l *testLogger) Log(level int, msg string) {
+	switch level {
+	case we.LogLevelDebug:
+		l.Debug(msg)
+	case we.LogLevelInfo:
+		l.Info(msg)
+	case we.LogLevelWarn:
+		l.Warn(msg)
+	case we.LogLevelError:
+		l.Error(msg)
+	}
+}
+
+// dummyProviderWithEndpoints is a provider that reports specific endpoints
+type dummyProviderWithEndpoints struct {
+	realm        string
+	challenge    string
+	endpoints    []string
+	authenticate func(http.Header, we.RequestScope) (*security.User, error)
+}
+
+func (dp *dummyProviderWithEndpoints) Endpoints() []string {
+	return dp.endpoints
+}
+
+func (dp *dummyProviderWithEndpoints) Authenticate(headers http.Header, scope we.RequestScope) (*security.User, error) {
+	if dp.authenticate != nil {
+		return dp.authenticate(headers, scope)
+	}
+	return nil, nil
+}
+
+func (dp *dummyProviderWithEndpoints) Realm() string {
+	return dp.realm
+}
+
+func (dp *dummyProviderWithEndpoints) IsValid(user *security.User) bool {
+	return user != nil
+}
+
+func (dp *dummyProviderWithEndpoints) Challenge() string {
+	return dp.challenge
+}
+
+// TestCoverageFilterOnAuthentication tests the OnAuthentication builder method
+func TestCoverageFilterOnAuthentication(t *testing.T) {
+	t.Run("OnAuthentication panics with no triggers", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic when calling OnAuthentication with no triggers")
+			}
+		}()
+		security.Filter(true).Authentication(&dummyProvider{realm: "realm"}).OnAuthentication().Build()
+	})
+
+	t.Run("OnAuthentication stores trigger and executes on auth", func(t *testing.T) {
+		triggered := false
+		var capturedUser *security.User
+		trigger := func(user *security.User, scope we.RequestScope) {
+			triggered = true
+			capturedUser = user
+		}
+
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "testuser"}}
+		filter := security.Filter(true).
+			Authentication(provider).
+			OnAuthentication(trigger).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Unexpected error: %v", e)
+		}
+		if !triggered {
+			t.Error("Expected trigger to be called")
+		}
+		if capturedUser == nil || capturedUser.Username != "testuser" {
+			t.Errorf("Expected captured user to be testuser, got: %v", capturedUser)
+		}
+	})
+
+	t.Run("OnAuthentication with multiple triggers", func(t *testing.T) {
+		count := 0
+		trigger1 := func(user *security.User, scope we.RequestScope) { count++ }
+		trigger2 := func(user *security.User, scope we.RequestScope) { count++ }
+
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "testuser"}}
+		filter := security.Filter(true).
+			Authentication(provider).
+			OnAuthentication(trigger1, trigger2).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Unexpected error: %v", e)
+		}
+		if count != 2 {
+			t.Errorf("Expected both triggers to be called, got count: %d", count)
+		}
+	})
+}
+
+// TestCoverageFilterLogger tests the Logger builder method
+func TestCoverageFilterLogger(t *testing.T) {
+	t.Run("Logger panics with nil logger", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic when calling Logger with nil")
+			}
+		}()
+		security.Filter(true).Authentication(&dummyProvider{realm: "realm"}).Logger(nil).Build()
+	})
+
+	t.Run("Logger sets custom logger successfully", func(t *testing.T) {
+		logger := &testLogger{}
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "testuser"}}
+		filter := security.Filter(true).
+			Authentication(provider).
+			Logger(logger).
+			Build()
+
+		if filter == nil {
+			t.Error("Expected filter to be built successfully")
+		}
+	})
+
+	t.Run("Logger is used when trigger panics", func(t *testing.T) {
+		logger := &testLogger{}
+		panicTrigger := func(user *security.User, scope we.RequestScope) {
+			panic("trigger panic")
+		}
+
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "testuser"}}
+		filter := security.Filter(true).
+			Authentication(provider).
+			OnAuthentication(panicTrigger).
+			Logger(logger).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
+		// Should not panic - execute recovers and logs
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Unexpected error: %v", e)
+		}
+		if len(logger.messages) == 0 {
+			t.Error("Expected logger to capture panic message")
+		}
+	})
+}
+
+// TestCoverageExecuteFunction tests the execute function via trigger panic recovery
+func TestCoverageExecuteFunction(t *testing.T) {
+	t.Run("Execute recovers from trigger panic", func(t *testing.T) {
+		logger := &testLogger{}
+		panicked := false
+		panicTrigger := func(user *security.User, scope we.RequestScope) {
+			panicked = true
+			panic("intentional panic")
+		}
+
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "user"}}
+		filter := security.Filter(true).
+			Authentication(provider).
+			OnAuthentication(panicTrigger).
+			Logger(logger).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Unexpected error: %v", e)
+		}
+		if !panicked {
+			t.Error("Expected trigger to have been called")
+		}
+		found := false
+		for _, msg := range logger.messages {
+			if msg == "[ERROR] failed to call authentication trigger: intentional panic" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected error log about trigger panic, got: %v", logger.messages)
+		}
+	})
+
+	t.Run("Execute successful trigger", func(t *testing.T) {
+		logger := &testLogger{}
+		called := false
+		trigger := func(user *security.User, scope we.RequestScope) {
+			called = true
+		}
+
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "user"}}
+		filter := security.Filter(true).
+			Authentication(provider).
+			OnAuthentication(trigger).
+			Logger(logger).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Unexpected error: %v", e)
+		}
+		if !called {
+			t.Error("Expected trigger to have been called")
+		}
+		if len(logger.messages) != 0 {
+			t.Errorf("Expected no error messages, got: %v", logger.messages)
+		}
+	})
+}
+
+// TestCoveragePathBasedAuthorization tests path-based authorization through the filter
+func TestCoveragePathBasedAuthorization(t *testing.T) {
+	t.Run("Path authorization with authorized user passes", func(t *testing.T) {
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "admin", Scopes: []string{"admin"}}}
+		filter := security.Filter(false).
+			Authentication(provider).
+			Path("/admin/*").Authorize(security.Scope("admin")).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/admin/dashboard")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Expected authorized user to pass, got: %v", e)
+		}
+	})
+
+	t.Run("Path authorization with unauthorized user fails with Forbidden", func(t *testing.T) {
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "user", Scopes: []string{"basic"}}}
+		filter := security.Filter(false).
+			Authentication(provider).
+			Path("/admin/*").Authorize(security.Scope("admin")).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/admin/dashboard")
+		if e := filter.Filter(headers, scope); e == nil {
+			t.Error("Expected unauthorized user to fail")
+		} else if !events.ForbiddenError.Is(e) {
+			t.Errorf("Expected ForbiddenError, got: %v", e)
+		}
+	})
+
+	t.Run("Path with no authorization rules requires authentication", func(t *testing.T) {
+		provider := &dummyProvider{realm: "realm"}
+		pathProvider := &dummyProvider{realm: "path-realm"}
+		filter := security.Filter(false).
+			Authentication(provider).
+			Path("/secure/*").Authentication(pathProvider).Authorize().
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/secure/data")
+		if e := filter.Filter(headers, scope); e == nil {
+			t.Error("Expected unauthenticated access to restricted path to fail")
+		} else if !events.UnauthorizedError.Is(e) {
+			t.Errorf("Expected UnauthorizedError, got: %v", e)
+		}
+	})
+
+	t.Run("Path authorization with path-specific provider authenticates", func(t *testing.T) {
+		rootProvider := &dummyProvider{realm: "root"}
+		pathProvider := &dummyProvider{
+			realm:             "path-realm",
+			authenticatedUser: &security.User{Username: "pathuser", Scopes: []string{"special"}},
+		}
+		filter := security.Filter(false).
+			Authentication(rootProvider).
+			Path("/special/*").Authentication(pathProvider).Authorize(security.Scope("special")).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/special/resource")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Expected path authentication to succeed, got: %v", e)
+		}
+	})
+
+	t.Run("Path authorization fails when path provider returns error", func(t *testing.T) {
+		rootProvider := &dummyProvider{realm: "root"}
+		pathProvider := &dummyProvider{
+			realm:               "path-realm",
+			authenticationError: events.ForbiddenError,
+		}
+		filter := security.Filter(false).
+			Authentication(rootProvider).
+			Path("/special/*").Authentication(pathProvider).Authorize(security.Scope("special")).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/special/resource")
+		if e := filter.Filter(headers, scope); e == nil {
+			t.Error("Expected path authentication failure to propagate")
+		}
+	})
+
+	t.Run("Authorization with All requires all to pass", func(t *testing.T) {
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{
+			Username: "admin",
+			Scopes:   []string{"admin"},
+			Realm:    "realm",
+		}}
+		filter := security.Filter(false).
+			Authentication(provider).
+			Path("/admin/*").Authorize(security.All(security.Scope("admin"), security.Realm("realm"))).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/admin/page")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Expected All authorization to pass, got: %v", e)
+		}
+	})
+
+	t.Run("Authorization with Either requires one to pass", func(t *testing.T) {
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{
+			Username: "user",
+			Scopes:   []string{"basic"},
+			Realm:    "realm",
+		}}
+		filter := security.Filter(false).
+			Authentication(provider).
+			Path("/flexible/*").Authorize(security.Either(security.Scope("admin"), security.Realm("realm"))).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/flexible/page")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Expected Either authorization to pass, got: %v", e)
+		}
+	})
+}
+
+// TestCoverageDeferredAuthorization tests deferred authorization (AuthorizationFunc used as Authorization)
+func TestCoverageDeferredAuthorization(t *testing.T) {
+	t.Run("AuthorizationFunc used in path authorization", func(t *testing.T) {
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "admin"}}
+		authFunc := security.AuthorizationFunc(func(user *security.User, scope we.RequestScope) bool {
+			return user != nil && user.Username == "admin"
+		})
+		filter := security.Filter(false).
+			Authentication(provider).
+			Path("/check/*").Authorize(authFunc).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/check/something")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Expected AuthorizationFunc to authorize admin, got: %v", e)
+		}
+	})
+
+	t.Run("AuthorizationFunc denies unauthorized user", func(t *testing.T) {
+		provider := &dummyProvider{realm: "realm", authenticatedUser: &security.User{Username: "regular"}}
+		authFunc := security.AuthorizationFunc(func(user *security.User, scope we.RequestScope) bool {
+			return user != nil && user.Username == "admin"
+		})
+		filter := security.Filter(false).
+			Authentication(provider).
+			Path("/check/*").Authorize(authFunc).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/check/something")
+		if e := filter.Filter(headers, scope); e == nil {
+			t.Error("Expected AuthorizationFunc to deny non-admin")
+		} else if !events.ForbiddenError.Is(e) {
+			t.Errorf("Expected ForbiddenError, got: %v", e)
+		}
+	})
+
+	t.Run("AuthorizationFunc with nil user and authorization allowing nil", func(t *testing.T) {
+		provider := &dummyProvider{realm: "realm"} // returns nil user
+		authFunc := security.AuthorizationFunc(func(user *security.User, scope we.RequestScope) bool {
+			// Authorization that allows anonymous access based on request method
+			return scope.Request().Method == http.MethodGet
+		})
+		filter := security.Filter(false).
+			Authentication(provider).
+			Path("/public/*").Authorize(authFunc).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/public/page")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Expected authorization to pass for GET, got: %v", e)
+		}
+	})
+
+	t.Run("AuthorizationFunc with nil user denying access", func(t *testing.T) {
+		provider := &dummyProvider{realm: "realm"} // returns nil user
+		authFunc := security.AuthorizationFunc(func(user *security.User, scope we.RequestScope) bool {
+			return user != nil // requires authenticated user
+		})
+		filter := security.Filter(false).
+			Authentication(provider).
+			Path("/private/*").Authorize(authFunc).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/private/page")
+		if e := filter.Filter(headers, scope); e == nil {
+			t.Error("Expected authorization to fail for unauthenticated user")
+		} else if !events.UnauthorizedError.Is(e) {
+			t.Errorf("Expected UnauthorizedError, got: %v", e)
+		}
+	})
+}
+
+// TestCoverageRegisteredEndpoints tests filter behavior with provider-owned endpoints
+func TestCoverageRegisteredEndpoints(t *testing.T) {
+	t.Run("Provider owned endpoint is handled by the provider", func(t *testing.T) {
+		authenticated := false
+		loginProvider := &dummyProviderWithEndpoints{
+			realm:     "form",
+			endpoints: []string{"/login"},
+			authenticate: func(headers http.Header, scope we.RequestScope) (*security.User, error) {
+				if scope.Request().URL.Path == "/login" {
+					authenticated = true
+					return &security.User{Username: "formuser"}, nil
+				}
+				return nil, nil
+			},
+		}
+
+		filter := security.Filter(true).
+			Authentication(loginProvider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodPost, "http://localhost:8080/login")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Unexpected error: %v", e)
+		}
+		if !authenticated {
+			t.Error("Expected provider endpoint to be handled")
+		}
+	})
+
+	t.Run("Provider owned endpoint with auth triggers", func(t *testing.T) {
+		triggered := false
+		loginProvider := &dummyProviderWithEndpoints{
+			realm:     "form",
+			endpoints: []string{"/login"},
+			authenticate: func(headers http.Header, scope we.RequestScope) (*security.User, error) {
+				return &security.User{Username: "formuser"}, nil
+			},
+		}
+
+		trigger := func(user *security.User, scope we.RequestScope) {
+			triggered = true
+		}
+
+		filter := security.Filter(true).
+			Authentication(loginProvider).
+			OnAuthentication(trigger).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodPost, "http://localhost:8080/login")
+		if e := filter.Filter(headers, scope); e != nil {
+			t.Errorf("Unexpected error: %v", e)
+		}
+		if !triggered {
+			t.Error("Expected auth trigger to fire on endpoint authentication")
+		}
+	})
+
+	t.Run("Provider owned endpoint returns error", func(t *testing.T) {
+		loginProvider := &dummyProviderWithEndpoints{
+			realm:     "form",
+			challenge: "Basic",
+			endpoints: []string{"/login"},
+			authenticate: func(headers http.Header, scope we.RequestScope) (*security.User, error) {
+				return nil, events.UnauthorizedError
+			},
+		}
+
+		filter := security.Filter(true).
+			Authentication(loginProvider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodPost, "http://localhost:8080/login")
+		if e := filter.Filter(headers, scope); e == nil {
+			t.Error("Expected error from endpoint authentication")
+		} else if !events.UnauthorizedError.Is(e) {
+			t.Errorf("Expected UnauthorizedError, got: %v", e)
+		}
+		if len(headers["Www-Authenticate"]) == 0 {
+			t.Error("Expected WWW-Authenticate challenge to be sent")
+		}
+	})
+}
+
 func TestFilterRootAuthentication(t *testing.T) {
 	t.Run("Test unrestricted unauthenticated call", func(t *testing.T) {
 		provider := &dummyProvider{realm: "realm"}

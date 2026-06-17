@@ -221,3 +221,258 @@ func TestSSOAuthenticationProvider(t *testing.T) {
 		}
 	})
 }
+
+// mockAuthCodeProvider is a mock AuthorizationCodeProvider for SSO coverage tests
+type mockAuthCodeProvider struct{}
+
+func (m *mockAuthCodeProvider) AuthorizationUrl(replyHandlerUrl, state string) string {
+	return "http://auth-server/authorize?redirect_uri=" + replyHandlerUrl + "&state=" + state
+}
+
+func (m *mockAuthCodeProvider) State(r *http.Request) (string, string) {
+	q := r.URL.Query()
+	return q.Get("state"), q.Get("code")
+}
+
+func (m *mockAuthCodeProvider) ValidateAuthorizationCode(_ context.Context, code, replyHandlerUrl string) (*security.User, error) {
+	return &security.User{Username: "sso-user"}, nil
+}
+
+// TestCoverageSSODynamicAddress tests SSOAuthenticationProvider DynamicAddress builder
+func TestCoverageSSODynamicAddress(t *testing.T) {
+	t.Run("DynamicAddress sets dynamic base url", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			DynamicAddress(true).
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		if provider == nil {
+			t.Error("Expected provider to be built successfully")
+		}
+	})
+}
+
+// TestCoverageSSORedirectToRequestedUrl tests SSOAuthenticationProvider RedirectToRequestedUrl builder
+func TestCoverageSSORedirectToRequestedUrl(t *testing.T) {
+	t.Run("RedirectToRequestedUrl configures redirect behavior", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			RedirectToRequestedUrl(true).
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		if provider == nil {
+			t.Error("Expected provider to be built successfully")
+		}
+	})
+
+	t.Run("RedirectToRequestedUrl false uses chaining", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			RedirectToRequestedUrl(false).
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		if provider == nil {
+			t.Error("Expected provider to be built successfully")
+		}
+	})
+}
+
+// TestCoverageSSOAddress tests SSOAuthenticationProvider Address builder
+func TestCoverageSSOAddress(t *testing.T) {
+	t.Run("Address sets the public address", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			Address("https://example.com").
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		if provider == nil {
+			t.Error("Expected provider to be built successfully")
+		}
+	})
+
+	t.Run("Address panics with empty address", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic with empty address")
+			}
+		}()
+		security.SSOAuthenticationProvider().
+			Address("").
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+	})
+
+	t.Run("Address panics with invalid url", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic with invalid url")
+			}
+		}()
+		security.SSOAuthenticationProvider().
+			Address("://invalid").
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+	})
+
+	t.Run("Address panics with opaque url", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("Expected panic with opaque url")
+			}
+		}()
+		security.SSOAuthenticationProvider().
+			Address("mailto:user@example.com").
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+	})
+}
+
+// TestCoverageSSOEndpoints tests SSOAuthenticationProvider Endpoints()
+func TestCoverageSSOEndpoints(t *testing.T) {
+	provider := security.SSOAuthenticationProvider().
+		AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+		Build()
+
+	endpoints := provider.Endpoints()
+	if endpoints == nil || len(endpoints) == 0 {
+		t.Error("Expected SSO provider to return reply handler endpoint")
+	}
+	if endpoints[0] != "/sso/authorization" {
+		t.Errorf("Expected default endpoint '/sso/authorization', got: %s", endpoints[0])
+	}
+}
+
+// TestCoverageSSOAuthenticateRedirect tests the SSO authenticate flow that triggers extractSchemaAndHost
+func TestCoverageSSOAuthenticateRedirect(t *testing.T) {
+	t.Run("SSO redirects to authorization URL with Forwarded header", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			DynamicAddress(true).
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/protected")
+		scope.SetHeader("Forwarded", "proto=https;host=example.com")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected redirect error from SSO")
+		}
+	})
+
+	t.Run("SSO redirects with X-Forwarded-Host header", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			DynamicAddress(true).
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/protected")
+		scope.SetHeader("X-Forwarded-Host", "proxy.example.com")
+		scope.SetHeader("X-Forwarded-Proto", "https")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected redirect error from SSO")
+		}
+	})
+
+	t.Run("SSO redirects with X-Forwarded-Proto only", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			DynamicAddress(true).
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/protected")
+		scope.SetHeader("X-Forwarded-Proto", "https")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected redirect error from SSO")
+		}
+	})
+
+	t.Run("SSO redirects without forwarded headers", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			DynamicAddress(true).
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/protected")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected redirect error from SSO")
+		}
+	})
+
+	t.Run("SSO with static address does not use dynamic", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			Address("https://static.example.com").
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/protected")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected redirect error from SSO")
+		}
+	})
+
+	t.Run("SSO with X-Forwarded-Host without proto defaults to https", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			DynamicAddress(true).
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/protected")
+		scope.SetHeader("X-Forwarded-Host", "proxy.example.com")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected redirect error from SSO")
+		}
+	})
+
+	t.Run("SSO with Forwarded header missing proto defaults to https", func(t *testing.T) {
+		provider := security.SSOAuthenticationProvider().
+			DynamicAddress(true).
+			AuthorizationCodeProvider(&mockAuthCodeProvider{}).
+			Build()
+
+		filter := security.Filter(true).
+			Authentication(provider).
+			Build()
+
+		headers := make(http.Header)
+		scope := test.MockedRequestScope(http.MethodGet, "http://localhost:8080/protected")
+		scope.SetHeader("Forwarded", "host=example.com")
+		e := filter.Filter(headers, scope)
+		if e == nil {
+			t.Error("Expected redirect error from SSO")
+		}
+	})
+}

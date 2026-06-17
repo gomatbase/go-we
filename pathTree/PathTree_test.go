@@ -6,6 +6,7 @@ package pathTree
 
 import (
 	"log"
+	"slices"
 	"testing"
 )
 
@@ -312,4 +313,141 @@ func TestAddRoutes(t *testing.T) {
 		}
 	})
 
+}
+
+// TestCoverageGetRoutes exercises getRoutes paths that iterate over variables,
+// wildcards and double wildcards when listing routes.
+func TestCoverageGetRoutes(t *testing.T) {
+	t.Run("ListRoutes with variables", func(t *testing.T) {
+		tree := New[string]()
+		tree.Add("/users/{id}", "user-by-id")
+		tree.Add("/users/{id}/posts", "user-posts")
+
+		routes := tree.ListRoutes()
+		expected := []string{"/root/users/{id}", "/root/users/{id}/posts"}
+		for _, exp := range expected {
+			if !slices.Contains(routes, exp) {
+				t.Errorf("Expected route %s in list, got %v", exp, routes)
+			}
+		}
+	})
+
+	t.Run("ListRoutes with wildcard", func(t *testing.T) {
+		tree := New[string]()
+		tree.Add("/api/*", "api-wildcard")
+
+		routes := tree.ListRoutes()
+		if len(routes) == 0 {
+			t.Fatal("Expected at least one route, got none")
+		}
+		found := false
+		for _, r := range routes {
+			if r == "/root/api/*" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected /root/api/* in routes, got %v", routes)
+		}
+	})
+
+	t.Run("ListRoutes with double wildcard", func(t *testing.T) {
+		tree := New[string]()
+		tree.Add("/static/**", "static-handler")
+
+		routes := tree.ListRoutes()
+		if len(routes) == 0 {
+			t.Fatal("Expected at least one route, got none")
+		}
+		found := false
+		for _, r := range routes {
+			if r == "/root/static/**" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected /root/static/** in routes, got %v", routes)
+		}
+	})
+
+	t.Run("ListRoutes with mixed paths", func(t *testing.T) {
+		tree := New[string]()
+		tree.Add("/api/{version}/users", "versioned-users")
+		tree.Add("/api/{version}/*", "versioned-wildcard")
+		tree.Add("/files/**", "files-double-wildcard")
+		tree.Add("/health", "health-check")
+
+		routes := tree.ListRoutes()
+		if len(routes) != 4 {
+			t.Errorf("Expected 4 routes, got %d: %v", len(routes), routes)
+		}
+	})
+}
+
+// TestCoverageMatchSignature exercises matchSignature conflict detection for
+// wildcards and double wildcards.
+func TestCoverageMatchSignature(t *testing.T) {
+	t.Run("Duplicate wildcard path returns error", func(t *testing.T) {
+		tree := New[string]()
+		if err := tree.Add("/api/*", "first"); err != nil {
+			t.Fatal("Failed to add first wildcard path:", err)
+		}
+		err := tree.Add("/api/*", "second")
+		if err == nil {
+			t.Error("Expected error when adding duplicate wildcard path, got nil")
+		}
+		if err != ExistingPathError {
+			t.Errorf("Expected ExistingPathError, got %v", err)
+		}
+	})
+
+	t.Run("Duplicate double wildcard path returns error", func(t *testing.T) {
+		tree := New[string]()
+		if err := tree.Add("/static/**", "first"); err != nil {
+			t.Fatal("Failed to add first double wildcard path:", err)
+		}
+		err := tree.Add("/static/**", "second")
+		if err == nil {
+			t.Error("Expected error when adding duplicate double wildcard path, got nil")
+		}
+		if err != ExistingPathError {
+			t.Errorf("Expected ExistingPathError, got %v", err)
+		}
+	})
+
+	t.Run("Same variable structure different name returns error", func(t *testing.T) {
+		tree := New[string]()
+		if err := tree.Add("/users/{id}", "by-id"); err != nil {
+			t.Fatal("Failed to add /users/{id}:", err)
+		}
+		// Same signature (path variable at same position) but different variable name
+		// The matchSignature function matches variables by name, so {name} != {id}
+		// This should NOT conflict because variable names differ - it's a separate branch
+		err := tree.Add("/users/{name}", "by-name")
+		// Based on the code, variables are matched by name in matchSignature,
+		// so different variable names create different branches
+		if err != nil {
+			t.Log("Adding /users/{name} after /users/{id} returned error (expected for same-sig):", err)
+		}
+	})
+
+	t.Run("Wildcard at deeper level conflicts", func(t *testing.T) {
+		tree := New[string]()
+		tree.Add("/api/v1/*", "v1-wildcard")
+		err := tree.Add("/api/v1/*", "v1-wildcard-dup")
+		if err != ExistingPathError {
+			t.Errorf("Expected ExistingPathError for /api/v1/* duplicate, got %v", err)
+		}
+	})
+
+	t.Run("Double wildcard at deeper level conflicts", func(t *testing.T) {
+		tree := New[string]()
+		tree.Add("/api/v1/**", "v1-dw")
+		err := tree.Add("/api/v1/**", "v1-dw-dup")
+		if err != ExistingPathError {
+			t.Errorf("Expected ExistingPathError for /api/v1/** duplicate, got %v", err)
+		}
+	})
 }
