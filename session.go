@@ -172,6 +172,7 @@ type sessionManager struct {
 
 	storageMutex sync.Mutex
 	done         chan struct{}
+	logger       Logger
 }
 
 func (sm *sessionManager) GetHttpSession(w http.ResponseWriter, r *http.Request) Session {
@@ -227,7 +228,7 @@ func (sm *sessionManager) purgeSessions() {
 	defer sm.storageMutex.Unlock()
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("Failed to purge old sessions: panic recovered: %v\n", r)
+			sm.logger.Error(fmt.Sprintf("Failed to purge old sessions: panic recovered: %v", r))
 		}
 	}()
 
@@ -236,7 +237,7 @@ func (sm *sessionManager) purgeSessions() {
 
 	// Check if context timed out
 	if ctx.Err() == context.DeadlineExceeded {
-		fmt.Println("Failed to purge old sessions: timeout exceeded")
+		sm.logger.Error("Failed to purge old sessions: timeout exceeded")
 	}
 }
 
@@ -333,6 +334,8 @@ type SessionManagerBuilder interface {
 	CookieMaxAge(maxAge int) SessionManagerBuilder
 	// CookiePartitioned enables partitioned cookies for third-party contexts (CHIPS). Defaults to false.
 	CookiePartitioned(partitioned bool) SessionManagerBuilder
+	// Logger sets the logger for the session manager
+	Logger(logger Logger) SessionManagerBuilder
 	// Build creates and returns the configured SessionManager.
 	// This method starts the background purge loop as a goroutine.
 	Build() SessionManager
@@ -440,12 +443,26 @@ func (b *sessionManagerBuilder) CookiePartitioned(partitioned bool) SessionManag
 	return b
 }
 
+// Logger sets the logger for the session manager
+func (b *sessionManagerBuilder) Logger(logger Logger) SessionManagerBuilder {
+	if logger == nil {
+		panic("logger cannot be nil")
+	}
+	b.logger = logger
+	return b
+}
+
 // Build creates and returns the configured SessionManager with all defaults applied.
 // This method starts the background purge loop as a goroutine.
 func (b *sessionManagerBuilder) Build() SessionManager {
 	// Apply defaults for storage
 	if b.storage == nil {
 		b.storage = &inMemorySessionStorage{sessions: make(map[string]*SessionObject)}
+	}
+
+	// Apply defaults for logger
+	if b.logger == nil {
+		b.logger = NewDefaultLogger()
 	}
 
 	go b.purgeLoop(b.sessionPurgingInterval)

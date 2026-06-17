@@ -5,7 +5,6 @@
 package we
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gomatbase/go-we/events"
@@ -38,12 +37,13 @@ type errorHandler struct {
 	marshaller     ErrorMarshaller
 	errorCatalog   map[string]ErrorHandler
 	weErrorCatalog map[int]ErrorHandler
+	logger         Logger
 }
 
 func (eh *errorHandler) HandleError(w http.ResponseWriter, err error, scope RequestScope) {
 	// first let's see if it's still possible to reply
 	if rw, ok := w.(*responseWriter); ok && rw.isWritten() {
-		fmt.Println("Failed to handle error as writer has already been written to")
+		eh.logger.Error("Failed to handle error as writer has already been written to")
 		return
 	}
 
@@ -67,7 +67,7 @@ func (eh *errorHandler) HandleError(w http.ResponseWriter, err error, scope Requ
 				w.Header().Set("Content-Type", mimeType)
 				w.WriteHeader(statusCode)
 				if _, e := w.Write(content); e != nil {
-					fmt.Println("Failed to write error response", e)
+					eh.logger.Error("Failed to write error response: " + e.Error())
 				}
 				return
 			}

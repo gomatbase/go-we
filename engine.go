@@ -205,6 +205,8 @@ type engine struct {
 	sessionManager SessionManager
 	// ErrorHandler to be used by the engine for any unchecked panics or errors
 	errorHandler ErrorHandler
+	// Logger for the engine
+	logger Logger
 	// the server the engine is running on, if managed by the engine itself (with Listen* methods)
 	server *http.Server
 	// HTTP server timeout configurations
@@ -258,7 +260,7 @@ func (wc *engine) GraciouslyShutdown(waitingTime time.Duration) error {
 
 // Listen starts the engine listening on the provided address. The engine will block until the server is stopped.
 func (wc *engine) Listen(addr string) error {
-	fmt.Println("Listening on", addr)
+	wc.logger.Info("Listening on " + addr)
 	wc.server = &http.Server{
 		Addr:              addr,
 		Handler:           wc,
@@ -273,7 +275,7 @@ func (wc *engine) Listen(addr string) error {
 
 // ListenWithTls starts the engine listening on the provided address using https. A certificate and key file locations must be provided.
 func (wc *engine) ListenWithTls(addr string, certFile string, keyFile string) error {
-	fmt.Println("Listening tls on", addr)
+	wc.logger.Info("Listening tls on " + addr)
 	wc.server = &http.Server{
 		Addr:              addr,
 		Handler:           wc,
@@ -307,7 +309,7 @@ func (wc *engine) ListenWithTlsOptions(addr string, config *tls.Config) error {
 	}
 	defer l.Close()
 
-	fmt.Println("Listening tls on", addr)
+	wc.logger.Info("Listening tls on " + addr)
 	return srv.Serve(tls.NewListener(l, config))
 }
 
@@ -424,6 +426,8 @@ type EngineBuilder interface {
 	SessionManager(sessionManager SessionManager) EngineBuilder
 	// ErrorHandler sets a custom error handler for the engine
 	ErrorHandler(errorHandler ErrorHandler) EngineBuilder
+	// Logger sets the logger to be used by the engine
+	Logger(logger Logger) EngineBuilder
 	// ReadHeaderTimeout sets the timeout for reading request headers (default: 10 seconds)
 	ReadHeaderTimeout(timeout time.Duration) EngineBuilder
 	// ReadTimeout sets the maximum duration for reading the entire request
@@ -443,6 +447,7 @@ type engineBuilder struct {
 	engine         *engine
 	sessionManager SessionManager
 	errorHandler   ErrorHandler
+	logger         Logger
 }
 
 // Handle registers a handler for a path. The handler will be called for all HTTP methods
@@ -480,6 +485,15 @@ func (eb *engineBuilder) SessionManager(sessionManager SessionManager) EngineBui
 // ErrorHandler sets a custom error handler for the engine
 func (eb *engineBuilder) ErrorHandler(errorHandler ErrorHandler) EngineBuilder {
 	eb.engine.errorHandler = errorHandler
+	return eb
+}
+
+// Logger sets the logger to be used by the engine
+func (eb *engineBuilder) Logger(logger Logger) EngineBuilder {
+	if logger == nil {
+		panic(errors.New("logger cannot be nil"))
+	}
+	eb.engine.logger = logger
 	return eb
 }
 
@@ -535,6 +549,7 @@ func (eb *engineBuilder) Build() Engine {
 			errorCatalog:   make(map[string]ErrorHandler),
 			weErrorCatalog: make(map[int]ErrorHandler),
 			marshaller:     ErrorMarshallerFunction(defaultErrorMarshaller),
+			logger:         eb.engine.logger,
 		}
 	}
 
@@ -553,6 +568,7 @@ func New() EngineBuilder {
 			matchTrees:        map[string]pathTree.Tree[HandlerFunction]{"ALL": pathTree.New[HandlerFunction]()},
 			readHeaderTimeout: DefaultReadHeaderTimeout,
 			maxHeaderBytes:    http.DefaultMaxHeaderBytes,
+			logger:            NewDefaultLogger(),
 		},
 	}
 }

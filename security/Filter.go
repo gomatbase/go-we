@@ -31,6 +31,8 @@ type FilterBuilder interface {
 	// OnAuthentication will add triggers to be executed when a user is authenticated . The triggers will be executed
 	// in the order they are added.
 	OnAuthentication(triggers ...func(*User, we.RequestScope)) FilterBuilder
+	// Logger sets the logger for the security filter
+	Logger(logger we.Logger) FilterBuilder
 	// Build validates and builds the security filter
 	Build() we.Filter
 }
@@ -59,6 +61,8 @@ type filterBuilder struct {
 	// if the built security filter should have restricted (non-anonymous) access by default (for any path which is
 	// not specifically configured)
 	restricted bool
+	// logger for the filter
+	logger we.Logger
 }
 
 // Authentication adds the configured authentiction providers and converts the builder to an authenticated security filter builder.
@@ -92,6 +96,15 @@ func (fb *filterBuilder) OnAuthentication(triggers ...func(user *User, scope we.
 		panic("no triggers provided")
 	}
 	fb.authenticationTriggers = append(fb.authenticationTriggers, triggers...)
+	return fb
+}
+
+// Logger sets the logger for the security filter
+func (fb *filterBuilder) Logger(logger we.Logger) FilterBuilder {
+	if logger == nil {
+		panic("logger cannot be nil")
+	}
+	fb.logger = logger
 	return fb
 }
 
@@ -201,6 +214,13 @@ func (fb *filterBuilder) Build() we.Filter {
 	// add authentication triggers to the filter as a whole
 	// TODO: separate triggers for root-level authentication and path specific ones, to accommodate authentication filters without root-level authentication
 	result.authenticationTriggers = fb.authenticationTriggers
+
+	// apply default logger if not set
+	if fb.logger == nil {
+		result.logger = we.NewDefaultLogger()
+	} else {
+		result.logger = fb.logger
+	}
 
 	return result
 }
@@ -379,6 +399,8 @@ type filter struct {
 	challenges []string
 	// if access to any path that is not configured in the authorizations path tree should be denied by default
 	restricted bool
+	// logger for the filter
+	logger we.Logger
 }
 
 // Filter is the implementation of the we.Filter method. It will handle the authentication and authorization process of
@@ -414,7 +436,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 			// Successful authorization will always return a user, either a real one or the special anonymous user.
 			for _, trigger := range f.authenticationTriggers {
 				// trigger any configured authentication trigger functions
-				execute(trigger, user, scope)
+				execute(f.logger, trigger, user, scope)
 			}
 			// set the user in session, which, in case WE has no sessions turned on, will be lost at the end of the request.
 			if scope.HasSession() {
@@ -476,7 +498,7 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 				scope.Session().Set(UserAttributeName, user)
 			}
 			for _, trigger := range f.authenticationTriggers {
-				execute(trigger, user, scope)
+				execute(f.logger, trigger, user, scope)
 			}
 		}
 		return nil
@@ -491,10 +513,10 @@ func (f *filter) Filter(header http.Header, scope we.RequestScope) error {
 }
 
 // execute triggers an onAuthentication trigger function, recovering from any panics the execution may trigger.
-func execute(trigger func(*User, we.RequestScope), user *User, scope we.RequestScope) {
+func execute(logger we.Logger, trigger func(*User, we.RequestScope), user *User, scope we.RequestScope) {
 	defer func() {
 		if recovery := recover(); recovery != nil {
-			fmt.Println("failed to call authentication trigger", recovery)
+			logger.Error(fmt.Sprintf("failed to call authentication trigger: %v", recovery))
 		}
 	}()
 	trigger(user, scope)
