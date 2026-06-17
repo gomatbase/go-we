@@ -6,6 +6,7 @@ This document outlines recommended practices for building secure, performant, an
 
 - [Security Best Practices](#security-best-practices)
 - [Error Handling Patterns](#error-handling-patterns)
+- [Logging Best Practices](#logging-best-practices)
 - [Performance Optimization](#performance-optimization)
 - [Session Management](#session-management)
 - [Filter Configuration](#filter-configuration)
@@ -420,6 +421,88 @@ func handler(w http.ResponseWriter, scope we.RequestScope) error {
     }
     // ...
 }
+```
+
+## Logging Best Practices
+
+For detailed logging configuration and custom logger implementation, see [LOGGING.md](./LOGGING.md).
+
+### Configure Logging for All Components
+
+Always configure loggers consistently across all framework components for unified logging:
+
+```go
+// Create a custom logger
+logger := myapp.NewCustomLogger()
+
+// Configure all components with the same logger
+sessionManager := we.DefaultSessionManager().
+    Logger(logger).
+    Build()
+
+filter := security.DefaultSecurityFilter().
+    Authentication(provider).
+    Logger(logger).
+    Build()
+
+engine := we.New().
+    Logger(logger).
+    SessionManager(sessionManager).
+    Filter(filter).
+    Build()
+```
+
+### Use Environment-Based Logging Levels
+
+Adjust logging verbosity based on the environment:
+
+```go
+func createLogger() we.Logger {
+    if os.Getenv("ENV") == "production" {
+        // Production: Only log warnings and errors
+        return logging.NewConditionalLogger(we.LogLevelWarn)
+    }
+    // Development: Log everything
+    return we.NewDefaultLogger()
+}
+
+engine := we.New().
+    Logger(createLogger()).
+    Build()
+```
+
+### Handle Logger Lifecycle
+
+Properly initialize and clean up loggers:
+
+```go
+logger, err := logging.NewFileLogger("app.log")
+if err != nil {
+    log.Fatalf("Failed to initialize logger: %v", err)
+}
+defer logger.Close()
+
+engine := we.New().
+    Logger(logger).
+    Build()
+
+// Application runs...
+engine.Listen(":8080")
+```
+
+### Implement Structured Logging for Production
+
+In production environments, use structured logging (JSON, metrics, etc.) for better analysis:
+
+```go
+// Example: Structured JSON logging
+logger := logging.NewJSONLogger()
+
+engine := we.New().
+    Logger(logger).
+    Build()
+
+// Logs output: {"level":"INFO","message":"Listening on :8080","timestamp":"2024-06-17T..."}
 ```
 
 ## Performance Optimization
