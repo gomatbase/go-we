@@ -377,5 +377,237 @@ Public content with relaxed headers:
 		Build()
 
 See the package examples for more detailed usage scenarios.
+
+# BodySizeLimit Filter
+
+The BodySizeLimit filter enforces maximum request body sizes to prevent DoS attacks
+and resource exhaustion from oversized uploads or requests.
+
+# Basic Usage
+
+The simplest configuration uses the default maximum size of 10MB:
+
+	filter := filters.DefaultBodySizeLimit().Build()
+
+	engine := we.New().Filter(filter).Build()
+
+# Custom Maximum Size
+
+Set a custom maximum body size for all requests:
+
+	filter := filters.DefaultBodySizeLimit().
+		MaxSize(5 * 1024 * 1024).  // 5MB
+		Build()
+
+# Path-Specific Limits
+
+Configure different size limits for different paths:
+
+	filter := filters.DefaultBodySizeLimit().
+		MaxSize(1024 * 1024).  // 1MB default
+		Path("/api/upload").
+			MaxSize(100 * 1024 * 1024).  // 100MB for uploads
+		Path("/api/import").
+			MaxSize(50 * 1024 * 1024).   // 50MB for imports
+		Build()
+
+	engine := we.New().Filter(filter).Build()
+
+# How It Works
+
+The filter performs two checks:
+
+ 1. **Content-Length Header Check**: If the Content-Length header indicates the body
+    exceeds the limit, the request is immediately rejected with HTTP 413 (Entity Too Large).
+
+ 2. **Body Reader Wrapping**: The request body reader is wrapped with http.MaxBytesReader
+    to prevent reading beyond the limit, protecting against missing or incorrect
+    Content-Length headers.
+
+If either check fails, a RequestEntityTooLargeError event is returned.
+
+# Size Constants
+
+Common size limits in bytes:
+
+	1 KB   = 1024
+	1 MB   = 1024 * 1024         (1048576)
+	5 MB   = 5 * 1024 * 1024     (5242880)
+	10 MB  = 10 * 1024 * 1024    (10485760) - default
+	50 MB  = 50 * 1024 * 1024    (52428800)
+	100 MB = 100 * 1024 * 1024   (104857600)
+
+# Examples
+
+Basic protection against large uploads:
+
+	filter := filters.DefaultBodySizeLimit().
+		MaxSize(10 * 1024 * 1024).  // 10MB max
+		Build()
+
+Different limits for different endpoints:
+
+	filter := filters.DefaultBodySizeLimit().
+		MaxSize(1024 * 100).  // 100KB default for JSON APIs
+		Path("/api/upload", "/api/media/**").
+			MaxSize(500 * 1024 * 1024).  // 500MB for file uploads
+		Path("/api/import").
+			MaxSize(100 * 1024 * 1024).  // 100MB for data imports
+		Build()
+
+Combine with other filters:
+
+	corsFilter := filters.Cors().AllowedOrigins("https://example.com").Build()
+	sizeFilter := filters.DefaultBodySizeLimit().MaxSize(5 * 1024 * 1024).Build()
+
+	engine := we.New().
+		Filter(corsFilter).
+		Filter(sizeFilter).
+		Build()
+
+# Security Considerations
+
+- Set reasonable limits based on your application's legitimate use cases
+- Smaller limits prevent potential DoS attacks through large payloads
+- Consider that different endpoints may have different requirements (file uploads vs. JSON APIs)
+- Test with your actual client behavior to ensure limits don't break legitimate functionality
+- Monitor rejection logs to detect potential attack patterns
+
+See the package examples for more detailed usage scenarios.
+
+# CSRF Filter
+
+The CSRF (Cross-Site Request Forgery) filter protects your application against CSRF attacks
+using the synchronizer token pattern. Tokens are generated, validated, and stored in user sessions.
+
+# Basic Usage
+
+The simplest configuration uses default settings with no exempt paths:
+
+	filter := filters.Csrf().Build()
+
+	engine := we.New().Filter(filter).Build()
+
+# Exempting Paths
+
+Exempt paths (typically API endpoints with Bearer authentication) from CSRF validation:
+
+	filter := filters.Csrf().
+		ExemptPaths("/api/webhook", "/api/external").
+		Build()
+
+	engine := we.New().Filter(filter).Build()
+
+# Custom Configuration
+
+Customize header names, field names, and token length:
+
+	filter := filters.Csrf().
+		HeaderName("X-Custom-CSRF").          // Default: X-CSRF-Token
+		FieldName("csrf_token").              // Default: _csrf
+		TokenLength(64).                      // Default: 32 bytes
+		ExemptPaths("/api/health").
+		Build()
+
+# How It Works
+
+ 1. **Token Generation**: For safe HTTP methods (GET, HEAD, OPTIONS), the filter generates
+    a random token and stores it in the session if one doesn't already exist.
+
+ 2. **Token Validation**: For state-changing methods (POST, PUT, DELETE, PATCH), the filter
+    validates that the request includes a valid CSRF token. Tokens can be provided via:
+    - HTTP header (default: X-CSRF-Token)
+    - Form field (default: _csrf)
+
+3. **Exemption**: Paths in the exempt list bypass CSRF validation entirely.
+
+# Safe Methods
+
+The filter considers these methods safe and does not require CSRF tokens:
+- GET
+- HEAD
+- OPTIONS
+
+# State-Changing Methods
+
+These methods require a valid CSRF token:
+- POST
+- PUT
+- DELETE
+- PATCH
+
+# Integration with Session Management
+
+CSRF tokens are stored in the session using the key "_csrf_token". When a user logs out
+or the session is cleared, the token is automatically removed.
+
+	session := scope.Session()
+	token := session.Get("_csrf_token")  // Retrieve token for HTML form
+
+# Token Rotation
+
+To force a new token (e.g., after login for security), clear the session token:
+
+	session := scope.Session()
+	session.Delete("_csrf_token")
+	// Next request will generate a new token
+
+# Examples
+
+Typical configuration for a web application:
+
+	filter := filters.Csrf().
+		ExemptPaths("/api/public/**", "/health", "/metrics").
+		Build()
+
+	engine := we.New().
+		Filter(filter).
+		Build()
+
+Using custom header names for JavaScript frameworks:
+
+	filter := filters.Csrf().
+		HeaderName("X-XSRF-TOKEN").         // Angular style
+		FieldName("xsrf-token").
+		Build()
+
+Combining with other security filters:
+
+	corsFilter := filters.Cors().
+		AllowedOrigins("https://example.com").
+		Build()
+
+	csrfFilter := filters.Csrf().
+		ExemptPaths("/api/**").  // APIs use Bearer tokens
+		Build()
+
+	engine := we.New().
+		Filter(corsFilter).
+		Filter(csrfFilter).
+		Build()
+
+# Security Considerations
+
+- Always include CSRF tokens in all state-changing requests
+- Ensure session management is properly configured and secure
+- Use HTTPS in production to prevent token interception
+- Regenerate tokens after sensitive operations (login, privilege escalation)
+- Do not exempt paths unless they use alternative authentication (e.g., Bearer tokens)
+- Monitor failed token validation attempts as they may indicate attacks
+
+# HTML Form Integration
+
+To use CSRF protection in HTML forms, retrieve the token from the session and include it:
+
+	// In your template/handler:
+	token := scope.Session().Get("_csrf_token")
+
+	// In HTML form:
+	<form method="POST" action="/api/resource">
+		<input type="hidden" name="_csrf" value="{{ .Token }}">
+		<!-- other fields -->
+	</form>
+
+See the package examples for more detailed usage scenarios.
 */
 package filters
