@@ -6,14 +6,13 @@ package security
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type CredentialsProvider interface {
@@ -43,7 +42,7 @@ func (scp credentialsMap) Get(username string) *User {
 
 func (scp credentialsMap) Authenticate(_ context.Context, username, password string) (*User, error) {
 	if entry, found := scp[username]; found {
-		if entry.password != password {
+		if err := bcrypt.CompareHashAndPassword([]byte(entry.password), []byte(password)); err != nil {
 			return nil, errors.New("invalid password")
 		}
 		return &entry.user, nil
@@ -69,11 +68,14 @@ func (imcp *inMemoryCredentialsProvider) Add(user User) *User {
 
 	existingUser := imcp.credentials.Get(user.Username)
 	entry := credentialEntry{user: user}
-	if strings.HasPrefix(user.Password, "md5:") {
-		entry.password = user.Password[4:]
+	if strings.HasPrefix(user.Password, "bcrypt:") {
+		entry.password = user.Password[7:]
 	} else {
-		md5Sum := md5.Sum([]byte(user.Password))
-		entry.password = base64.StdEncoding.EncodeToString(md5Sum[:])
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+		if err != nil {
+			panic("failed to hash password: " + err.Error())
+		}
+		entry.password = string(hashedPassword)
 	}
 	entry.user.Password = ""
 	imcp.credentials[user.Username] = entry
@@ -111,11 +113,14 @@ func DefaultCredentialsProvider(users ...User) CredentialsProvider {
 	provider := make(credentialsMap)
 	for _, user := range users {
 		entry := credentialEntry{user: user}
-		if strings.HasPrefix(user.Password, "md5:") {
-			entry.password = user.Password[4:]
+		if strings.HasPrefix(user.Password, "bcrypt:") {
+			entry.password = user.Password[7:]
 		} else {
-			md5Sum := md5.Sum([]byte(user.Password))
-			entry.password = base64.StdEncoding.EncodeToString(md5Sum[:])
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+			if err != nil {
+				panic("failed to hash password: " + err.Error())
+			}
+			entry.password = string(hashedPassword)
 		}
 		entry.user.Password = ""
 		provider[user.Username] = entry
@@ -125,7 +130,7 @@ func DefaultCredentialsProvider(users ...User) CredentialsProvider {
 
 // InMemoryCredentialsProvider creates a new in-memory credentials provider with the given users.
 // This is suitable for testing or simple applications with a small number of users.
-// Passwords are automatically hashed using MD5 and base64 encoded.
+// Passwords are automatically hashed using bcrypt.
 //
 // Example:
 //

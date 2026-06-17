@@ -5,7 +5,6 @@
 package security
 
 import (
-	"crypto/md5"
 	"encoding/base64"
 	"net/http"
 	"strings"
@@ -45,8 +44,7 @@ func (bap *basicAuthenticationProvider) Authenticate(headers http.Header, scope 
 		} else if username, password, found := strings.Cut(string(decoded), ":"); !found {
 			return nil, events.BadRequestError.WithPayload("text/plain", []byte("invalid credentials"))
 		} else {
-			md5Sum := md5.Sum([]byte(password))
-			if user, e := bap.credentialsProvider.Authenticate(scope.Context(), username, base64.StdEncoding.EncodeToString(md5Sum[:])); e != nil {
+			if user, e := bap.credentialsProvider.Authenticate(scope.Context(), username, password); e != nil {
 				return nil, events.ForbiddenError.WithPayload("text/plain", []byte(e.Error()))
 			} else {
 				return user, nil

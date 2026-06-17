@@ -6,8 +6,6 @@ package security
 
 import (
 	"bytes"
-	"crypto/md5"
-	"encoding/base64"
 	"fmt"
 	html_template "html/template"
 	"net/http"
@@ -213,8 +211,7 @@ func (lfap *loginFormAuthenticationProvider) Authenticate(headers http.Header, s
 			username := request.PostForm.Get(lfap.loginFormConfiguration.UsernameField)
 			password := request.PostForm.Get(lfap.loginFormConfiguration.PasswordField)
 
-			md5Sum := md5.Sum([]byte(password))
-			if user, e := lfap.credentialsProvider.Authenticate(scope.Context(), username, base64.StdEncoding.EncodeToString(md5Sum[:])); e != nil {
+			if user, e := lfap.credentialsProvider.Authenticate(scope.Context(), username, password); e != nil {
 				return nil, events.UnauthorizedError.WithPayload("text/html", []byte(lfap.loginForm.Generate(e.Error(), request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
 			} else if user == nil {
 				return nil, events.UnauthorizedError.WithPayload("text/html", []byte(lfap.loginForm.Generate("Invalid credentials", request.PostForm.Get(lfap.loginFormConfiguration.TargetField))))
