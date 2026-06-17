@@ -464,7 +464,7 @@ func (eb *engineBuilder) HandleMethod(method string, path string, handler Handle
 		eb.engine.matchTrees[method] = tree
 	}
 	if e := tree.Add(path, handler); e != nil {
-		panic(e)
+		panic(e.Error())
 	}
 	return eb
 }
@@ -491,7 +491,7 @@ func (eb *engineBuilder) ErrorHandler(errorHandler ErrorHandler) EngineBuilder {
 // Logger sets the logger to be used by the engine
 func (eb *engineBuilder) Logger(logger Logger) EngineBuilder {
 	if logger == nil {
-		panic(errors.New("logger cannot be nil"))
+		panic("logger cannot be nil")
 	}
 	eb.engine.logger = logger
 	return eb
@@ -500,7 +500,7 @@ func (eb *engineBuilder) Logger(logger Logger) EngineBuilder {
 // ReadHeaderTimeout sets the timeout for reading request headers
 func (eb *engineBuilder) ReadHeaderTimeout(timeout time.Duration) EngineBuilder {
 	if timeout < 0 {
-		panic(errors.New("read header timeout must be >= 0"))
+		panic("read header timeout must be >= 0")
 	}
 	eb.engine.readHeaderTimeout = timeout
 	return eb

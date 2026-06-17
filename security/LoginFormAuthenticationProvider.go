@@ -103,7 +103,7 @@ func (lf *loginForm) Configuration() *LoginFormConfiguration {
 func CustomLoginForm(configuration LoginFormConfiguration, customTemplate string) LoginForm {
 	t, e := template.New("loginForm").Parse(customTemplate)
 	if e != nil {
-		panic(e)
+		panic(e.Error())
 	}
 
 	configuration.Target = "{{.Target}}"
@@ -120,7 +120,7 @@ func CustomLoginForm(configuration LoginFormConfiguration, customTemplate string
 	form := &loginForm{staticForm: buffer.String(), configuration: &configuration}
 	formTemplate, e := html_template.New("loginForm").Parse(form.staticForm)
 	if e != nil {
-		panic(e)
+		panic(e.Error())
 	}
 
 	if strings.Index(form.staticForm, ".Error}}") >= 0 || strings.Index(form.staticForm, ".Target}}") >= 0 {
@@ -323,7 +323,7 @@ func (lfapb *loginFormAuthenticationProviderBuilder) Build() AuthenticationProvi
 	lfapb.provider.loginFormConfiguration = lfapb.provider.loginForm.Configuration()
 	if parsedActionUrl, e := url.Parse(lfapb.provider.loginFormConfiguration.Action); e != nil {
 		// errors should result in panics as they are not meant for recoverable runtime failures
-		panic(e)
+		panic(e.Error())
 	} else {
 		lfapb.provider.loginPath = parsedActionUrl.Path
 	}

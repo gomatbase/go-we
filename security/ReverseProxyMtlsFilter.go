@@ -157,7 +157,7 @@ func (rpmfb *reverseProxyMtlsFilterBuilder) AcceptingPEMCAs(certs []string) Reve
 		pemBlock, _ := pem.Decode([]byte(pemCert))
 		cert, err := x509.ParseCertificate(pemBlock.Bytes)
 		if err != nil {
-			panic(err)
+			panic(err.Error())
 		}
 		cas = append(cas, cert)
 	}
@@ -185,7 +185,7 @@ func (rpmfb *reverseProxyMtlsFilterBuilder) Build() we.Filter {
 		var e error
 		rpmfb.filter.cas, e = x509.SystemCertPool()
 		if e != nil {
-			panic(e)
+			panic(e.Error())
 		}
 	}
 	return rpmfb.filter

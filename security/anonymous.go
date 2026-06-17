@@ -43,7 +43,7 @@ func (ap *anonymousProvider) addPaths(paths []string) {
 		// for existing paths it doesn't matter, as it is meant just as ap match. Invalid paths raises panic
 		if e := ap.paths.Add(path, peg); e != nil {
 			if e != pathTree.ExistingPathError {
-				panic(e)
+				panic(e.Error())
 			}
 		} else {
 			ap.list = append(ap.list, path)

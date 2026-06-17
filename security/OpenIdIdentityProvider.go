@@ -264,7 +264,7 @@ func (oipb *openIdIdentityProviderBuilder) Build() BearerAndSsoProvider {
 	request, e := http.NewRequestWithContext(context.Background(), "GET", oipb.openIdUrl+oipb.openIdConfigurationEndpoint, nil)
 	if e != nil {
 		// most probably an incorrect configuration endpoint
-		panic(e)
+		panic(e.Error())
 	}
 	client := http.DefaultClient
 	if oipb.tlsConfig != nil {
@@ -343,7 +343,7 @@ func (oipb *openIdIdentityProviderBuilder) Build() BearerAndSsoProvider {
 			oipb.provider.canValidate = false
 		}
 	} else if e = oipb.provider.setKeys(oipb.jwks); e != nil {
-		panic(e)
+		panic(e.Error())
 	}
 
 	// Can only check authorization codes if the token endpoint is available and credentials are given, which is the

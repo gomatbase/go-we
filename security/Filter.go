@@ -205,7 +205,7 @@ func (fb *filterBuilder) Build() we.Filter {
 			for _, path := range builder.paths {
 				if e := result.authorizations.Add(path, authorization); e != nil {
 					// either the path is invalid or it's overloading an existing path
-					panic(e)
+					panic(e.Error())
 				}
 			}
 		}
