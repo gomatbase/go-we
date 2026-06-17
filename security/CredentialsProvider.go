@@ -102,10 +102,23 @@ func (imcp *inMemoryCredentialsProvider) Authenticate(ctx context.Context, usern
 	return imcp.credentials.Authenticate(ctx, username, password)
 }
 
+// DefaultCredentialsProvider creates a credentials provider from the given users.
+// If no users are provided, auto-generates a username and password (printed to stdout).
+//
+// WARNING: Auto-generated credentials are printed to stdout for development convenience only.
+// NEVER use auto-generated credentials in production. They may be captured in logs,
+// terminal history, or CI/CD systems. Always provide explicit users for production.
+//
+// Passwords are automatically hashed using bcrypt.
 func DefaultCredentialsProvider(users ...User) CredentialsProvider {
 	if len(users) == 0 {
 		username := uuid.NewString()
 		password := uuid.NewString()
+		// WARNING: Auto-generated credentials are printed to stdout for development convenience only.
+		// NEVER use this in production. Credentials printed to stdout may be captured in logs,
+		// terminal history, or CI/CD systems, exposing them to unauthorized access.
+		// For production, always provide explicit User credentials.
+		fmt.Println("WARNING: Development-only credentials generated. DO NOT use in production!")
 		fmt.Println("Generated credentials:", username, password)
 		users = []User{{Username: username, Password: password}}
 	}

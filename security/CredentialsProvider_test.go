@@ -25,9 +25,10 @@ func TestDefaultCredentialsProvider(t *testing.T) {
 		os.Stdout = writer
 
 		provider := security.DefaultCredentialsProvider()
-		// read the credentials, which are written to stdout in the form "Generated credentials: username password"
+		// read the credentials, which are written to stdout with a warning message first
 		scanner := bufio.NewScanner(reader)
-		scanner.Scan()
+		scanner.Scan() // Skip warning line
+		scanner.Scan() // Get the credentials line: "Generated credentials: username password"
 		parts := strings.Split(scanner.Text(), " ")
 		username := parts[2]
 		password := parts[3]
