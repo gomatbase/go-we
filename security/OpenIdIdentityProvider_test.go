@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gomatbase/go-we/security"
+	"golang.org/x/oauth2"
 )
 
 type TokenResponse struct {
@@ -162,6 +164,49 @@ func oidConfigBytes(issuer string) []byte {
 		CodeChallengeMethodsSupported:       []string{"plain", "S256"},
 	})
 	return oidConfig
+}
+
+type capturedTokenEndpointRequest struct {
+	grantType     string
+	authorization string
+	basicAuth     bool
+	basicClient   string
+	basicSecret   string
+	formClient    string
+	formSecret    string
+	code          string
+	redirectURI   string
+}
+
+func captureTokenEndpointRequest(r *http.Request) capturedTokenEndpointRequest {
+	_ = r.ParseForm()
+	basicClient, basicSecret, basicAuth := r.BasicAuth()
+	return capturedTokenEndpointRequest{
+		grantType:     r.Form.Get("grant_type"),
+		authorization: r.Header.Get("Authorization"),
+		basicAuth:     basicAuth,
+		basicClient:   basicClient,
+		basicSecret:   basicSecret,
+		formClient:    r.Form.Get("client_id"),
+		formSecret:    r.Form.Get("client_secret"),
+		code:          r.Form.Get("code"),
+		redirectURI:   r.Form.Get("redirect_uri"),
+	}
+}
+
+func testOpenIDConfiguration(baseURL string) security.OpenIdConfiguration {
+	return security.OpenIdConfiguration{
+		Issuer:                            baseURL,
+		AuthorizationEndpoint:             baseURL + "/oauth/authorize",
+		TokenEndpoint:                     baseURL + "/oauth/token",
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post"},
+	}
+}
+
+func writeTestJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 func TestDefaultClaimsMapper(t *testing.T) {
@@ -775,6 +820,222 @@ func TestOauth2IdentityProvider_TokenIntrospector(t *testing.T) {
 			t.Errorf("Unexpected token username '%s'", user.Username)
 		} else if len(user.Scopes) != 1 || user.Scopes[0] != "openid" {
 			t.Errorf("Unexpected token scopes '%v'", user.Scopes)
+		}
+	})
+}
+
+func TestOpenIdIdentityProviderAuthorizationCodeExchange(t *testing.T) {
+	t.Run("basic auth and bearer introspection", func(t *testing.T) {
+		var baseURL string
+		var authorizationCodeRequest *capturedTokenEndpointRequest
+		var clientCredentialsRequest *capturedTokenEndpointRequest
+		var introspectionAuthorization string
+		var introspectionToken string
+
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/.well-known/openid-configuration":
+				writeTestJSON(w, http.StatusOK, testOpenIDConfiguration(baseURL))
+			case "/oauth/token":
+				captured := captureTokenEndpointRequest(r)
+				switch captured.grantType {
+				case "authorization_code":
+					authorizationCodeRequest = &captured
+					writeTestJSON(w, http.StatusOK, map[string]any{
+						"access_token": "user-token",
+						"token_type":   "bearer",
+						"expires_in":   3600,
+					})
+				case "client_credentials":
+					clientCredentialsRequest = &captured
+					writeTestJSON(w, http.StatusOK, map[string]any{
+						"access_token": "application-token",
+						"token_type":   "bearer",
+						"expires_in":   3600,
+					})
+				default:
+					writeTestJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported_grant_type"})
+				}
+			case "/introspect":
+				_ = r.ParseForm()
+				introspectionAuthorization = r.Header.Get("Authorization")
+				introspectionToken = r.Form.Get("token")
+				writeTestJSON(w, http.StatusOK, security.TokenIntrospection{
+					Active:   true,
+					Scope:    "openid",
+					Username: "user1",
+					Issuer:   baseURL,
+				})
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+		baseURL = server.URL
+
+		tlsConfig := &tls.Config{RootCAs: x509.NewCertPool(), MinVersion: tls.VersionTLS12}
+		tlsConfig.RootCAs.AddCert(server.Certificate())
+		provider := security.OpenIdIdentityProvider(baseURL).
+			Tls(tlsConfig).
+			Client("client", "secret").
+			Jwks([]security.JwKey{jwKey}).
+			Build().AuthorizationCodeProvider()
+
+		user, err := provider.ValidateAuthorizationCode(context.Background(), "authorization-code", "https://app.example/login")
+		if err != nil {
+			t.Fatalf("authorization-code validation failed: %v", err)
+		}
+		if user == nil || user.Username != "user1" {
+			t.Fatalf("unexpected user: %#v", user)
+		}
+		if authorizationCodeRequest == nil {
+			t.Fatal("authorization-code request was not sent")
+		}
+		if !authorizationCodeRequest.basicAuth || authorizationCodeRequest.basicClient != "client" || authorizationCodeRequest.basicSecret != "secret" {
+			t.Errorf("authorization-code request did not use expected Basic credentials: %#v", authorizationCodeRequest)
+		}
+		if authorizationCodeRequest.authorization == "Bearer application-token" {
+			t.Error("authorization-code request used the application Bearer token")
+		}
+		if authorizationCodeRequest.code != "authorization-code" {
+			t.Errorf("unexpected authorization code: %q", authorizationCodeRequest.code)
+		}
+		if authorizationCodeRequest.redirectURI != "https://app.example/login" {
+			t.Errorf("unexpected redirect URI: %q", authorizationCodeRequest.redirectURI)
+		}
+		if clientCredentialsRequest == nil || !clientCredentialsRequest.basicAuth || clientCredentialsRequest.basicClient != "client" || clientCredentialsRequest.basicSecret != "secret" {
+			t.Errorf("client-credentials request did not use expected Basic credentials: %#v", clientCredentialsRequest)
+		}
+		if introspectionAuthorization != "Bearer application-token" {
+			t.Errorf("unexpected introspection authorization: %q", introspectionAuthorization)
+		}
+		if introspectionToken != "user-token" {
+			t.Errorf("unexpected introspection token: %q", introspectionToken)
+		}
+	})
+
+	t.Run("client secret post fallback", func(t *testing.T) {
+		var baseURL string
+		var authorizationCodeRequests []capturedTokenEndpointRequest
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/.well-known/openid-configuration":
+				writeTestJSON(w, http.StatusOK, testOpenIDConfiguration(baseURL))
+			case "/oauth/token":
+				captured := captureTokenEndpointRequest(r)
+				switch captured.grantType {
+				case "authorization_code":
+					authorizationCodeRequests = append(authorizationCodeRequests, captured)
+					if captured.formClient != "client" || captured.formSecret != "secret" {
+						writeTestJSON(w, http.StatusUnauthorized, map[string]string{
+							"error":             "invalid_client",
+							"error_description": "form client credentials required",
+						})
+						return
+					}
+					writeTestJSON(w, http.StatusOK, map[string]any{
+						"access_token": "user-token",
+						"token_type":   "bearer",
+						"expires_in":   3600,
+					})
+				case "client_credentials":
+					writeTestJSON(w, http.StatusOK, map[string]any{
+						"access_token": "application-token",
+						"token_type":   "bearer",
+						"expires_in":   3600,
+					})
+				default:
+					writeTestJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported_grant_type"})
+				}
+			case "/introspect":
+				_ = r.ParseForm()
+				writeTestJSON(w, http.StatusOK, security.TokenIntrospection{
+					Active:   r.Form.Get("token") == "user-token",
+					Scope:    "openid",
+					Username: "user1",
+					Issuer:   baseURL,
+				})
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+		baseURL = server.URL
+
+		provider := security.OpenIdIdentityProvider(baseURL).
+			Client("client", "secret").
+			Jwks([]security.JwKey{jwKey}).
+			Build().AuthorizationCodeProvider()
+
+		user, err := provider.ValidateAuthorizationCode(context.Background(), "authorization-code", "https://app.example/login")
+		if err != nil {
+			t.Fatalf("authorization-code validation failed: %v", err)
+		}
+		if user == nil || user.Username != "user1" {
+			t.Fatalf("unexpected user: %#v", user)
+		}
+		if len(authorizationCodeRequests) != 2 {
+			t.Fatalf("expected two authorization-code requests, got %d", len(authorizationCodeRequests))
+		}
+		if !authorizationCodeRequests[0].basicAuth || authorizationCodeRequests[0].basicClient != "client" || authorizationCodeRequests[0].basicSecret != "secret" {
+			t.Errorf("first request did not use expected Basic credentials: %#v", authorizationCodeRequests[0])
+		}
+		if authorizationCodeRequests[1].basicAuth || authorizationCodeRequests[1].formClient != "client" || authorizationCodeRequests[1].formSecret != "secret" {
+			t.Errorf("second request did not use expected form credentials: %#v", authorizationCodeRequests[1])
+		}
+	})
+
+	t.Run("token endpoint error", func(t *testing.T) {
+		var baseURL string
+		introspectionRequests := 0
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/.well-known/openid-configuration":
+				writeTestJSON(w, http.StatusOK, testOpenIDConfiguration(baseURL))
+			case "/oauth/token":
+				captured := captureTokenEndpointRequest(r)
+				if captured.grantType == "client_credentials" {
+					writeTestJSON(w, http.StatusOK, map[string]any{
+						"access_token": "application-token",
+						"token_type":   "bearer",
+						"expires_in":   3600,
+					})
+					return
+				}
+				writeTestJSON(w, http.StatusUnauthorized, map[string]string{
+					"error":             "invalid_client",
+					"error_description": "client authentication failed",
+				})
+			case "/introspect":
+				introspectionRequests++
+				writeTestJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer server.Close()
+		baseURL = server.URL
+
+		provider := security.OpenIdIdentityProvider(baseURL).
+			Client("client", "secret").
+			Jwks([]security.JwKey{jwKey}).
+			Build().AuthorizationCodeProvider()
+
+		user, err := provider.ValidateAuthorizationCode(context.Background(), "authorization-code", "https://app.example/login")
+		if user != nil {
+			t.Errorf("expected no user, got %#v", user)
+		}
+		var retrieveError *oauth2.RetrieveError
+		if !errors.As(err, &retrieveError) {
+			t.Fatalf("expected OAuth retrieval error, got %T: %v", err, err)
+		}
+		if retrieveError.Response.StatusCode != http.StatusUnauthorized || retrieveError.ErrorCode != "invalid_client" {
+			t.Errorf("unexpected OAuth retrieval error: %#v", retrieveError)
+		}
+		if introspectionRequests != 0 {
+			t.Errorf("expected no introspection after token error, got %d request(s)", introspectionRequests)
 		}
 	})
 }

@@ -270,6 +270,7 @@ func (oipb *openIdIdentityProviderBuilder) Build() BearerAndSsoProvider {
 	if oipb.tlsConfig != nil {
 		client = &http.Client{Transport: &http.Transport{TLSClientConfig: oipb.tlsConfig}}
 	}
+	oipb.provider.authorizationCodeHttpClient = client
 
 	response, openIdConfigurationError := client.Do(request)
 	if openIdConfigurationError == nil {
@@ -371,10 +372,11 @@ With that, it should be able to introspect the token to get all scopes/roles. th
 jwt, should be validated using the exposed jwk endpoint.
 */
 type openIdIdentityProvider struct {
-	mu         sync.RWMutex
-	client     string
-	secret     string
-	httpClient *http.Client
+	mu                          sync.RWMutex
+	client                      string
+	secret                      string
+	httpClient                  *http.Client
+	authorizationCodeHttpClient *http.Client
 
 	openIdConfiguration OpenIdConfiguration
 
@@ -402,25 +404,20 @@ func (oip *openIdIdentityProvider) State(request *http.Request) (state string, a
 }
 
 func (oip *openIdIdentityProvider) ValidateAuthorizationCode(ctx context.Context, code, replyHandlerUrl string) (user *User, e error) {
-	b := fmt.Sprintf("grant_type=authorization_code&token_format=%s&client_id=%s%s&code=%s&redirect_uri=%s", oip.authorizationTokenFormat, oip.client, oip.requestScopes, code, replyHandlerUrl)
-	request, e := http.NewRequestWithContext(ctx, "POST", oip.openIdConfiguration.TokenEndpoint,
-		bytes.NewReader([]byte(b)))
-	if e != nil {
-		return nil, e
+	config := &oauth2.Config{
+		ClientID:     oip.client,
+		ClientSecret: oip.secret,
+		RedirectURL:  replyHandlerUrl,
+		Endpoint: oauth2.Endpoint{
+			TokenURL: oip.openIdConfiguration.TokenEndpoint,
+		},
 	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	response, e := oip.httpClient.Do(request)
+	token, e := config.Exchange(context.WithValue(ctx, oauth2.HTTPClient, oip.authorizationCodeHttpClient), code)
 	if e != nil {
-		return nil, e
-	}
-	defer response.Body.Close()
-	body, e := io.ReadAll(response.Body)
-	tokenResponse := &TokenResponse{}
-	if e = json.Unmarshal(body, tokenResponse); e != nil {
 		return nil, e
 	}
 
-	if user, e = oip.Introspect(ctx, tokenResponse.AccessToken); e != nil {
+	if user, e = oip.Introspect(ctx, token.AccessToken); e != nil {
 		return nil, e
 	} else if oip.userEnrichmentFunction != nil {
 		user, e = oip.userEnrichmentFunction(user)
